@@ -100,16 +100,29 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 		invoiceStatus = "conflict"
 	}
 
+	d := ocrResult.Data
 	_ = w.store.UpdateInvoiceData(ctx, p.InvoiceID, db.InvoiceUpdate{
-		VendorName:     ocrResult.Data.VendorName,
-		VendorTaxID:    ocrResult.Data.VendorTaxID,
-		InvoiceDocNo:   ocrResult.Data.InvoiceDocNo,
-		InvoiceDate:    ocrResult.Data.InvoiceDate,
-		TotalBeforeVAT: ocrResult.Data.TotalBeforeVAT,
-		VATAmount:      ocrResult.Data.VATAmount,
-		TotalAmount:    ocrResult.Data.TotalAmount,
-		VATMathOK:      ocrResult.VATMathOK,
-		Status:         invoiceStatus,
+		DocType:              d.DocType,
+		VatInclusive:         d.VatInclusive,
+		VatRate:              d.VatRate,
+		VendorName:           d.VendorName,
+		VendorTaxID:          d.VendorTaxID,
+		VendorAddress:        d.VendorAddress,
+		VendorBranchCode:     d.VendorBranchCode,
+		BuyerName:            d.BuyerName,
+		BuyerTaxID:           d.BuyerTaxID,
+		BuyerAddress:         d.BuyerAddress,
+		BuyerBranchCode:      d.BuyerBranchCode,
+		InvoiceDocNo:         d.InvoiceDocNo,
+		InvoiceDate:          d.InvoiceDate,
+		VatExemptAmount:      d.VatExemptAmount,
+		VatInclusiveSubtotal: d.VatInclusiveSubtotal,
+		DiscountAmount:       d.DiscountAmount,
+		TotalBeforeVAT:       d.TotalBeforeVAT,
+		VATAmount:            d.VATAmount,
+		TotalAmount:          d.TotalAmount,
+		VATMathOK:            ocrResult.VATMathOK,
+		Status:               invoiceStatus,
 	})
 
 	// Clear old items before saving new ones (handles re-run OCR)
@@ -127,13 +140,16 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 		}
 
 		saved, err := w.store.CreateInvoiceItem(ctx, db.InvoiceItem{
-			TenantID:     p.TenantID,
-			BranchID:     p.BranchID,
-			InvoiceID:    p.InvoiceID,
-			Description:  item.Description,
-			Quantity:     item.Quantity,
-			UnitPrice:    item.UnitPrice,
-			TotalPrice:   item.TotalPrice,
+			TenantID:    p.TenantID,
+			BranchID:    p.BranchID,
+			InvoiceID:   p.InvoiceID,
+			ProductCode: item.ProductCode,
+			Description: item.Description,
+			Unit:        item.Unit,
+			Quantity:    item.Quantity,
+			UnitPrice:   item.UnitPrice,
+			Discount:    item.Discount,
+			TotalPrice:  item.TotalPrice,
 			AssetType:    classResult.AssetType,
 			ClassifiedBy: classResult.ClassifiedBy,
 		})

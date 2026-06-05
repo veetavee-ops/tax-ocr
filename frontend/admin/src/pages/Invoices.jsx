@@ -35,11 +35,10 @@ function UploadModal({ onClose, onDone }) {
       form.append('branch_id', branchID)
       form.append('user_id', user.id)
       form.append('file', file)
-      await api.post('/documents/upload', form, {
+      const res = await api.post('/documents/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      onDone()
-      onClose()
+      onClose(res.data.invoice.id)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -89,14 +88,42 @@ export default function Invoices() {
 
   const filtered = filter ? data.filter((inv) => inv.status === filter) : data
 
+  const fmt = (n) => {
+    const parts = Number(n ?? 0).toFixed(2).split('.')
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return parts.join('.')
+  }
+  const fmtDate = (d) => new Date(d).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
+
+  const handleDelete = async (e, id) => {
+    e.stopPropagation()
+    if (!window.confirm('ลบเอกสารนี้? ไม่สามารถกู้คืนได้')) return
+    try {
+      await api.delete(`/invoices/${id}`)
+      load()
+    } catch { /* ignore */ }
+  }
+
   const cols = [
-    { key: 'id',     label: 'ID',   render: (r) => <span className="font-mono text-xs text-gray-400">{r.id.slice(0,8)}…</span> },
-    { key: 'vendor_tax_id', label: 'Vendor Tax ID' },
-    { key: 'total_before_vat', label: 'ก่อน VAT',  render: (r) => r.total_before_vat?.toLocaleString() },
-    { key: 'vat_amount',       label: 'VAT',        render: (r) => r.vat_amount?.toLocaleString() },
-    { key: 'total_amount',     label: 'รวม',        render: (r) => r.total_amount?.toLocaleString() },
-    { key: 'status', label: 'Status', render: (r) => <StatusBadge value={r.status} /> },
-    { key: 'created_at', label: 'วันที่', render: (r) => new Date(r.created_at).toLocaleDateString('th-TH') },
+    { key: 'invoice_no', label: '#', render: (r) => (
+      <div>
+        <span className="font-semibold text-gray-800">#{r.invoice_no}</span>
+        <div className="font-mono text-xs text-gray-400">{r.id.slice(0,8)}…</div>
+      </div>
+    )},
+    { key: 'vendor_name', label: 'ชื่อร้าน',  render: (r) => r.vendor_name || <span className="text-gray-300">—</span> },
+    { key: 'vendor_tax_id', label: 'เลขภาษี', render: (r) => r.vendor_tax_id || <span className="text-gray-300">—</span> },
+    { key: 'total_before_vat', label: 'ก่อน VAT', render: (r) => fmt(r.total_before_vat) },
+    { key: 'vat_amount', label: 'VAT (จากใบ)', render: (r) => fmt(r.vat_amount) },
+    { key: 'total_amount',     label: 'รวม',      render: (r) => fmt(r.total_amount) },
+    { key: 'status',    label: 'Status', render: (r) => <StatusBadge value={r.status} /> },
+    { key: 'created_at', label: 'วันที่-เวลา', render: (r) => fmtDate(r.created_at) },
+    { key: 'actions', label: '', render: (r) => (
+      <button onClick={(e) => handleDelete(e, r.id)}
+        className="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
+        ลบ
+      </button>
+    )},
   ]
 
   return (
@@ -114,7 +141,7 @@ export default function Invoices() {
         ))}
       </div>
       <Table columns={cols} data={filtered} onRowClick={(r) => navigate(`/invoices/${r.id}`)} />
-      {showUpload && <UploadModal onClose={() => setShowUpload(false)} onDone={load} />}
+      {showUpload && <UploadModal onClose={(invoiceId) => { setShowUpload(false); if (invoiceId) navigate(`/invoices/${invoiceId}`) }} onDone={load} />}
     </div>
   )
 }

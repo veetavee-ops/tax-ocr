@@ -1,0 +1,3 @@
+ALTER TABLE invoices
+  ADD COLUMN IF NOT EXISTS verified_by UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;

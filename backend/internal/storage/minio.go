@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -71,4 +72,21 @@ func (c *Client) Upload(ctx context.Context, tenantID string, filename string, r
 		FileHash: hash,
 		Size:     int64(len(data)),
 	}, nil
+}
+
+func (c *Client) PresignedURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+	u, err := c.mc.PresignedGetObject(ctx, c.bucket, objectPath, expiry, url.Values{})
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
+func (c *Client) Download(ctx context.Context, objectPath string) ([]byte, error) {
+	obj, err := c.mc.GetObject(ctx, c.bucket, objectPath, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	return io.ReadAll(obj)
 }

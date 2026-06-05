@@ -95,6 +95,30 @@ func (s *Store) ListMessages(ctx context.Context, conversationID string) ([]Mess
 	return items, nil
 }
 
+// FindOrCreateConversationByLineUser returns the most recent open conversation
+// for a LINE user, or creates a new one if none exists.
+func (s *Store) FindOrCreateConversationByLineUser(ctx context.Context, tenantID, lineUserID, branchID string) (Conversation, error) {
+	var c Conversation
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, COALESCE(branch_id::text,''), COALESCE(user_id::text,''),
+		  channel, COALESCE(line_user_id,''), status, created_at, updated_at
+		  FROM conversations
+		  WHERE tenant_id = $1 AND line_user_id = $2 AND status = 'open'
+		  ORDER BY created_at DESC LIMIT 1`,
+		tenantID, lineUserID).
+		Scan(&c.ID, &c.TenantID, &c.BranchID, &c.UserID,
+			&c.Channel, &c.LineUserID, &c.Status, &c.CreatedAt, &c.UpdatedAt)
+	if err == nil {
+		return c, nil
+	}
+	return s.CreateConversation(ctx, Conversation{
+		TenantID:   tenantID,
+		BranchID:   branchID,
+		Channel:    "line_oa",
+		LineUserID: lineUserID,
+	})
+}
+
 func (s *Store) CreateMessage(ctx context.Context, input Message) (Message, error) {
 	if input.ConversationID == "" || input.Content == "" {
 		return Message{}, ErrInvalidInput

@@ -82,3 +82,21 @@ func (s *server) createPayout(w http.ResponseWriter, _ *http.Request) {
 	// placeholder — trigger payout batch
 	writeJSON(w, http.StatusAccepted, map[string]any{"message": "payout queued"})
 }
+
+func (s *server) acceptReviewerTask(w http.ResponseWriter, r *http.Request) {
+	task, err := s.store.AcceptReviewerTask(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": task})
+}
+
+func (s *server) completeReviewerTask(w http.ResponseWriter, r *http.Request) {
+	task, err := s.store.CompleteReviewerTask(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": task})
+}

@@ -66,55 +66,67 @@ func (s *server) getInvoiceItems(w http.ResponseWriter, r *http.Request) {
 func (s *server) updateInvoice(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req struct {
-		VendorName     string  `json:"vendor_name"`
-		VendorTaxID    string  `json:"vendor_tax_id"`
-		InvoiceDocNo   string  `json:"invoice_doc_no"`
-		InvoiceDate    string  `json:"invoice_date"`
-		TotalBeforeVat float64 `json:"total_before_vat"`
-		VatAmount      float64 `json:"vat_amount"`
-		TotalAmount    float64 `json:"total_amount"`
+		DocType              string  `json:"doc_type"`
+		VatInclusive         bool    `json:"vat_inclusive"`
+		VatRate              float64 `json:"vat_rate"`
+		VendorName           string  `json:"vendor_name"`
+		VendorTaxID          string  `json:"vendor_tax_id"`
+		VendorAddress        string  `json:"vendor_address"`
+		VendorBranchCode     string  `json:"vendor_branch_code"`
+		BuyerName            string  `json:"buyer_name"`
+		BuyerTaxID           string  `json:"buyer_tax_id"`
+		BuyerAddress         string  `json:"buyer_address"`
+		BuyerBranchCode      string  `json:"buyer_branch_code"`
+		InvoiceDocNo         string  `json:"invoice_doc_no"`
+		InvoiceDate          string  `json:"invoice_date"`
+		VatExemptAmount      float64 `json:"vat_exempt_amount"`
+		VatInclusiveSubtotal float64 `json:"vat_inclusive_subtotal"`
+		DiscountAmount       float64 `json:"discount_amount"`
+		TotalBeforeVat       float64 `json:"total_before_vat"`
+		VatAmount            float64 `json:"vat_amount"`
+		TotalAmount          float64 `json:"total_amount"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
-	log.Printf("[updateInvoice] id=%s vat=%.2f total=%.2f before=%.2f", id, req.VatAmount, req.TotalAmount, req.TotalBeforeVat)
+	vatRate := req.VatRate
+	if vatRate <= 0 {
+		vatRate = 7.0
+	}
+	vatMathOK := math.Abs(req.TotalBeforeVat*vatRate/100-req.VatAmount) < 0.02
 
-	// Fetch current to compute vat_math_ok with merged amounts.
-	cur, err := s.store.GetInvoice(r.Context(), id)
+	log.Printf("[updateInvoice] id=%s before=%.2f vat=%.2f total=%.2f vatMathOK=%v", id, req.TotalBeforeVat, req.VatAmount, req.TotalAmount, vatMathOK)
+
+	inv, err := s.store.FullUpdateInvoice(r.Context(), id, db.InvoiceUpdate{
+		DocType:              req.DocType,
+		VatInclusive:         req.VatInclusive,
+		VatRate:              vatRate,
+		VendorName:           req.VendorName,
+		VendorTaxID:          req.VendorTaxID,
+		VendorAddress:        req.VendorAddress,
+		VendorBranchCode:     req.VendorBranchCode,
+		BuyerName:            req.BuyerName,
+		BuyerTaxID:           req.BuyerTaxID,
+		BuyerAddress:         req.BuyerAddress,
+		BuyerBranchCode:      req.BuyerBranchCode,
+		InvoiceDocNo:         req.InvoiceDocNo,
+		InvoiceDate:          req.InvoiceDate,
+		VatExemptAmount:      req.VatExemptAmount,
+		VatInclusiveSubtotal: req.VatInclusiveSubtotal,
+		DiscountAmount:       req.DiscountAmount,
+		TotalBeforeVAT:       req.TotalBeforeVat,
+		VATAmount:            req.VatAmount,
+		TotalAmount:          req.TotalAmount,
+		VATMathOK:            vatMathOK,
+	})
 	if err != nil {
-		writeError(w, http.StatusNotFound, err)
-		return
-	}
-
-	before := cur.TotalBeforeVat
-	vat := cur.VatAmount
-	if req.TotalBeforeVat != 0 {
-		before = req.TotalBeforeVat
-	}
-	if req.VatAmount != 0 {
-		vat = req.VatAmount
-	}
-	vatMathOK := math.Abs(before*0.07-vat) < 0.01
-
-	if err := s.store.UpdateInvoiceData(r.Context(), id, db.InvoiceUpdate{
-		VendorName:     req.VendorName,
-		VendorTaxID:    req.VendorTaxID,
-		InvoiceDocNo:   req.InvoiceDocNo,
-		InvoiceDate:    req.InvoiceDate,
-		TotalBeforeVAT: req.TotalBeforeVat,
-		VATAmount:      req.VatAmount,
-		TotalAmount:    req.TotalAmount,
-		VATMathOK:      vatMathOK,
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	inv, err := s.store.GetInvoice(r.Context(), id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, db.ErrNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": inv})
@@ -180,13 +192,14 @@ func (s *server) updateInvoiceItem(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Quantity   float64 `json:"quantity"`
 		UnitPrice  float64 `json:"unit_price"`
+		Discount   float64 `json:"discount"`
 		TotalPrice float64 `json:"total_price"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.store.UpdateInvoiceItem(r.Context(), r.PathValue("id"), req.Quantity, req.UnitPrice, req.TotalPrice); err != nil {
+	if err := s.store.UpdateInvoiceItem(r.Context(), r.PathValue("id"), req.Quantity, req.UnitPrice, req.Discount, req.TotalPrice); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

@@ -165,6 +165,18 @@ func (s *Store) HasAnyUser(ctx context.Context) (bool, error) {
 	return count > 0, err
 }
 
+func (s *Store) GetUserByID(ctx context.Context, id string) (User, error) {
+	var u User
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, name, email, phone, line_user_id, role, status, password_hash, created_at, updated_at
+		 FROM users WHERE id = $1 AND status = 'active'`, id).
+		Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.Phone, &u.LineUserID, &u.Role, &u.Status, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx,
@@ -272,9 +284,66 @@ func (s *Store) GetDocumentImport(ctx context.Context, id string) (DocumentImpor
 	return d, err
 }
 
+func (s *Store) UpdateDocumentImportStatus(ctx context.Context, id, status string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE document_imports SET status = $2, updated_at = NOW() WHERE id = $1`,
+		id, status)
+	return err
+}
+
 func nullIfEmpty(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
+}
+
+func (s *Store) GetUserByLineID(ctx context.Context, lineUserID, tenantID string) (User, error) {
+	var u User
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, name, email, phone, line_user_id, role, status, created_at, updated_at
+		 FROM users WHERE line_user_id = $1 AND tenant_id = $2 AND status = 'active'`,
+		lineUserID, tenantID).
+		Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.Phone, &u.LineUserID, &u.Role, &u.Status, &u.CreatedAt, &u.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+func (s *Store) GetOrCreateLiffUser(ctx context.Context, lineUserID, name, tenantID string) (User, error) {
+	u, err := s.GetUserByLineID(ctx, lineUserID, tenantID)
+	if err == nil {
+		return u, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return User{}, err
+	}
+	return s.CreateUser(ctx, User{
+		TenantID:   tenantID,
+		Name:       name,
+		LineUserID: lineUserID,
+		Role:       "staff",
+	})
+}
+
+func (s *Store) ListDocumentImportsByUser(ctx context.Context, userID string) ([]DocumentImport, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, tenant_id, branch_id, user_id, source_type, COALESCE(source_url,''),
+		        total_files, processed_files, status, created_at, updated_at
+		 FROM document_imports WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocumentImport
+	for rows.Next() {
+		var d DocumentImport
+		if err := rows.Scan(&d.ID, &d.TenantID, &d.BranchID, &d.UserID, &d.SourceType,
+			&d.SourceURL, &d.TotalFiles, &d.ProcessedFiles, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, d)
+	}
+	return items, nil
 }

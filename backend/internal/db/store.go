@@ -69,30 +69,58 @@ type DocumentImport struct {
 }
 
 type Invoice struct {
-	ID               string    `json:"id"`
-	TenantID         string    `json:"tenant_id"`
-	BranchID         string    `json:"branch_id"`
-	DocumentImportID string    `json:"document_import_id,omitempty"`
-	FilePath         string    `json:"file_path"`
-	FileHash         string    `json:"file_hash"`
-	VendorTaxID      string    `json:"vendor_tax_id,omitempty"`
-	TotalBeforeVat   float64   `json:"total_before_vat"`
-	VatAmount        float64   `json:"vat_amount"`
-	TotalAmount      float64   `json:"total_amount"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               string     `json:"id"`
+	InvoiceNo        int        `json:"invoice_no"`
+	TenantID         string     `json:"tenant_id"`
+	BranchID         string     `json:"branch_id"`
+	DocumentImportID string     `json:"document_import_id,omitempty"`
+	FilePath         string     `json:"file_path"`
+	FileHash         string     `json:"file_hash"`
+	// Document classification
+	DocType      string `json:"doc_type,omitempty"`
+	VatInclusive bool   `json:"vat_inclusive"`
+	VatRate      float64 `json:"vat_rate"`
+	// Seller info
+	VendorName        string `json:"vendor_name,omitempty"`
+	VendorTaxID       string `json:"vendor_tax_id,omitempty"`
+	VendorAddress     string `json:"vendor_address,omitempty"`
+	VendorBranchCode  string `json:"vendor_branch_code,omitempty"`
+	// Buyer info
+	BuyerName        string `json:"buyer_name,omitempty"`
+	BuyerTaxID       string `json:"buyer_tax_id,omitempty"`
+	BuyerAddress     string `json:"buyer_address,omitempty"`
+	BuyerBranchCode  string `json:"buyer_branch_code,omitempty"`
+	// Document reference
+	InvoiceDocNo string `json:"invoice_doc_no,omitempty"`
+	InvoiceDate  string `json:"invoice_date,omitempty"`
+	// Financial summary
+	VatExemptAmount      float64 `json:"vat_exempt_amount"`
+	VatInclusiveSubtotal float64 `json:"vat_inclusive_subtotal"`
+	DiscountAmount       float64 `json:"discount_amount"`
+	TotalBeforeVat       float64 `json:"total_before_vat"`
+	VatAmount            float64 `json:"vat_amount"`
+	TotalAmount          float64 `json:"total_amount"`
+	VatMathOK            bool    `json:"vat_math_ok"`
+	// Status
+	Status     string     `json:"status"`
+	VerifiedBy string     `json:"verified_by,omitempty"`
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type InvoiceItem struct {
-	ID           string    `json:"id"`
-	TenantID     string    `json:"tenant_id"`
-	BranchID     string    `json:"branch_id"`
-	InvoiceID    string    `json:"invoice_id"`
-	Description  string    `json:"description"`
-	Quantity     float64   `json:"quantity"`
-	UnitPrice    float64   `json:"unit_price"`
-	TotalPrice   float64   `json:"total_price"`
+	ID          string    `json:"id"`
+	TenantID    string    `json:"tenant_id"`
+	BranchID    string    `json:"branch_id"`
+	InvoiceID   string    `json:"invoice_id"`
+	ProductCode string    `json:"product_code,omitempty"`
+	Description string    `json:"description"`
+	Unit        string    `json:"unit,omitempty"`
+	Quantity    float64   `json:"quantity"`
+	UnitPrice   float64   `json:"unit_price"`
+	Discount    float64   `json:"discount"`
+	TotalPrice  float64   `json:"total_price"`
 	AssetType    string    `json:"asset_type"`
 	ClassifiedBy string    `json:"classified_by"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -223,6 +251,16 @@ type ArchiveLog struct {
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type OcrConfig struct {
+	ID        string    `json:"id"`
+	Provider  string    `json:"provider"`
+	APIKey    string    `json:"api_key,omitempty"`
+	Enabled   bool      `json:"enabled"`
+	UpdatedBy string    `json:"updated_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type RewardConfig struct {

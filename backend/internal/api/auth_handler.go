@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -29,6 +31,13 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+type RefreshClaims struct {
+	UserID   string `json:"user_id"`
+	TenantID string `json:"tenant_id"`
+	Type     string `json:"type"`
+	jwt.RegisteredClaims
+}
+
 func issueToken(user db.User) (string, error) {
 	claims := Claims{
 		UserID:   user.ID,
@@ -36,7 +45,21 @@ func issueToken(user db.User) (string, error) {
 		Name:     user.Name,
 		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+func issueRefreshToken(user db.User) (string, error) {
+	claims := RefreshClaims{
+		UserID:   user.ID,
+		TenantID: user.TenantID,
+		Type:     "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -113,15 +136,26 @@ func (s *server) setup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	refreshToken, err := issueRefreshToken(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"token":  token,
-		"user":   map[string]any{"id": user.ID, "name": user.Name, "email": user.Email, "role": user.Role, "tenant_id": user.TenantID},
-		"tenant": tenant,
+		"token":         token,
+		"refresh_token": refreshToken,
+		"user":          map[string]any{"id": user.ID, "name": user.Name, "email": user.Email, "role": user.Role, "tenant_id": user.TenantID},
+		"tenant":        tenant,
 	})
 }
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
+	if !loginLimiter.allow(extractIP(r)) {
+		writeError(w, http.StatusTooManyRequests, errors.New("too many login attempts, please try again later"))
+		return
+	}
+
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -148,8 +182,30 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go func(u db.User, ip, ua string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := s.store.CreateAuditLog(ctx, db.AuditLog{
+			TenantID:   u.TenantID,
+			UserID:     u.ID,
+			Action:     "login",
+			EntityType: "auth",
+			IPAddress:  ip,
+			DeviceInfo: ua,
+		}); err != nil {
+			log.Printf("[audit] login write failed: %v", err)
+		}
+	}(user, extractIP(r), r.UserAgent())
+
+	refreshToken, err := issueRefreshToken(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"token": token,
+		"token":         token,
+		"refresh_token": refreshToken,
 		"user": map[string]any{
 			"id":        user.ID,
 			"name":      user.Name,
@@ -160,6 +216,58 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) lineLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		LineUserID string `json:"line_user_id"`
+		Name       string `json:"name"`
+		TenantID   string `json:"tenant_id"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.LineUserID == "" || req.TenantID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("line_user_id and tenant_id are required"))
+		return
+	}
+	if req.Name == "" {
+		req.Name = "LINE User"
+	}
+
+	user, err := s.store.GetOrCreateLiffUser(r.Context(), req.LineUserID, req.Name, req.TenantID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	token, err := issueToken(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	refreshToken, err := issueRefreshToken(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":         token,
+		"refresh_token": refreshToken,
+		"user": map[string]any{
+			"id":        user.ID,
+			"name":      user.Name,
+			"role":      user.Role,
+			"tenant_id": user.TenantID,
+		},
+	})
+}
+
+func (s *server) logout(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"message": "logged out"})
+}
+
 func (s *server) me(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromContext(r.Context())
 	if claims == nil {
@@ -167,11 +275,52 @@ func (s *server) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user_id":   claims.UserID,
+		"id":        claims.UserID,
 		"tenant_id": claims.TenantID,
 		"name":      claims.Name,
 		"role":      claims.Role,
 	})
+}
+
+func (s *server) refresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	token, err := jwt.ParseWithClaims(req.RefreshToken, &RefreshClaims{}, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		writeError(w, http.StatusUnauthorized, errors.New("invalid refresh token"))
+		return
+	}
+
+	claims, ok := token.Claims.(*RefreshClaims)
+	if !ok || claims.Type != "refresh" {
+		writeError(w, http.StatusUnauthorized, errors.New("invalid refresh token"))
+		return
+	}
+
+	user, err := s.store.GetUserByID(r.Context(), claims.UserID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, errors.New("user not found or inactive"))
+		return
+	}
+
+	newToken, err := issueToken(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"token": newToken})
 }
 
 func authMiddleware(next http.Handler) http.Handler {

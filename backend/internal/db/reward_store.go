@@ -28,6 +28,18 @@ func (s *Store) ListRewardConfigs(ctx context.Context) ([]RewardConfig, error) {
 	return items, nil
 }
 
+func (s *Store) GetRewardAmounts(ctx context.Context) (map[string]float64, error) {
+	configs, err := s.ListRewardConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]float64, len(configs))
+	for _, c := range configs {
+		out[c.TaskType] = c.Amount
+	}
+	return out, nil
+}
+
 func (s *Store) UpdateRewardConfig(ctx context.Context, id string, amount float64, updatedBy string) (RewardConfig, error) {
 	if amount <= 0 {
 		return RewardConfig{}, ErrInvalidInput

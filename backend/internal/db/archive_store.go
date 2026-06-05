@@ -95,6 +95,55 @@ func (s *Store) CreateArchivePolicy(ctx context.Context, input ArchivePolicy) (A
 	return p, err
 }
 
+func (s *Store) CreateArchiveLog(ctx context.Context, input ArchiveLog) (ArchiveLog, error) {
+	var a ArchiveLog
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO archive_logs (tenant_id, entity_type, entity_id, archive_path)
+		 VALUES ($1, $2, $3::uuid, $4)
+		 RETURNING id, tenant_id, entity_type, entity_id::text, archived_at, archive_path, status, created_at, updated_at`,
+		input.TenantID, input.EntityType, input.EntityID, input.ArchivePath).
+		Scan(&a.ID, &a.TenantID, &a.EntityType, &a.EntityID,
+			&a.ArchivedAt, &a.ArchivePath, &a.Status, &a.CreatedAt, &a.UpdatedAt)
+	return a, err
+}
+
+// FindInvoicesToArchive returns invoice IDs whose created_at is older than activeDays
+// and have not yet been archived.
+func (s *Store) FindInvoicesToArchive(ctx context.Context, tenantID string, activeDays int) ([]Invoice, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, tenant_id, branch_id, COALESCE(document_import_id::text,''), file_path, file_hash,
+		        invoice_no, COALESCE(vendor_name,''), COALESCE(vendor_tax_id,''),
+		        total_before_vat, vat_amount, total_amount, vat_math_ok, status, created_at, updated_at
+		 FROM invoices
+		 WHERE tenant_id = $1
+		   AND status NOT IN ('archived','pending')
+		   AND created_at < NOW() - ($2 || ' days')::interval
+		   AND id NOT IN (SELECT entity_id FROM archive_logs WHERE entity_type = 'invoice' AND status = 'archived')`,
+		tenantID, activeDays)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Invoice
+	for rows.Next() {
+		var inv Invoice
+		if err := rows.Scan(&inv.ID, &inv.TenantID, &inv.BranchID, &inv.DocumentImportID,
+			&inv.FilePath, &inv.FileHash, &inv.InvoiceNo, &inv.VendorName, &inv.VendorTaxID,
+			&inv.TotalBeforeVat, &inv.VatAmount, &inv.TotalAmount, &inv.VatMathOK, &inv.Status,
+			&inv.CreatedAt, &inv.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, inv)
+	}
+	return items, nil
+}
+
+func (s *Store) MarkInvoiceArchived(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE invoices SET status = 'archived', updated_at = NOW() WHERE id = $1`, id)
+	return err
+}
+
 func (s *Store) UpdateArchivePolicy(ctx context.Context, id string, input ArchivePolicy) (ArchivePolicy, error) {
 	var p ArchivePolicy
 	err := s.pool.QueryRow(ctx,
