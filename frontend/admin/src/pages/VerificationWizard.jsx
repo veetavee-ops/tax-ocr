@@ -62,10 +62,17 @@ export default function VerificationWizard({ invoice, items, onVerified }) {
     return { ...item, computed, chosen, hasConflict, missingData, canCompute }
   }), [items, itemChoices])
 
-  const itemsSum       = useMemo(() => r2(itemChecks.reduce((s, i) => s + (itemChoices[i.id] ?? i.total_price), 0)), [itemChecks, itemChoices])
+  const itemsSum = useMemo(() => r2(itemChecks.reduce((s, i) => s + (itemChoices[i.id] ?? i.total_price), 0)), [itemChecks, itemChoices])
+
+  // For vat_inclusive receipts, line items include VAT — compare to vat_inclusive_subtotal (or total_amount).
+  // For normal invoices, line items exclude VAT — compare to total_before_vat.
+  const expectedSubtotal = invoice.vat_inclusive
+    ? (invoice.vat_inclusive_subtotal || invoice.total_amount)
+    : invoice.total_before_vat
+
   const subtotalConflict = items.length > 0
-                           && invoice.total_before_vat > 0
-                           && Math.abs(itemsSum - invoice.total_before_vat) >= 0.01
+                           && expectedSubtotal > 0
+                           && Math.abs(itemsSum - expectedSubtotal) >= 0.01
 
   const vatCalc       = r2(invoice.total_before_vat * 0.07)
   const vatConflict   = invoice.total_before_vat > 0 && Math.abs(vatCalc - invoice.vat_amount) >= 0.01
@@ -264,7 +271,10 @@ export default function VerificationWizard({ invoice, items, onVerified }) {
               }`}>
                 <span>ผลรวมรายการ: <strong className="font-mono">{fmt(itemsSum)}</strong></span>
                 <span className="text-gray-400">vs</span>
-                <span>ยอดก่อน VAT: <strong className="font-mono">{fmt(invoice.total_before_vat)}</strong></span>
+                <span>
+                  {invoice.vat_inclusive ? 'มูลค่าที่มีภาษี' : 'ยอดก่อน VAT'}:{' '}
+                  <strong className="font-mono">{fmt(expectedSubtotal)}</strong>
+                </span>
                 <span className={`ml-auto font-semibold ${subtotalConflict ? 'text-yellow-600' : 'text-green-600'}`}>
                   {subtotalConflict ? '⚠ ไม่ตรง' : '✓ ตรง'}
                 </span>

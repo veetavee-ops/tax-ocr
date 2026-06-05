@@ -79,11 +79,12 @@ func (v *visionClient) extractText(ctx context.Context, imageBytes []byte) (stri
 }
 
 var (
-	taxIDRegex     = regexp.MustCompile(`\b\d{13}\b`)
-	floatRegex     = regexp.MustCompile(`[\d,]+\.\d{2}`)
-	vatAmtRegex    = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d]{0,40}([\d,]+\.\d{2})`)
-	beforeVATRegex = regexp.MustCompile(`(?:มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี|ราคาสินค้า|มูลค่าสินค้า|รวมก่อนภาษี|ราคารวมก่อน)[^\d]{0,40}([\d,]+\.\d{2})`)
-	totalAmtRegex  = regexp.MustCompile(`(?:รวมจำนวนเงินทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|จำนวนเงินรวม|รวมเงิน)[^\d]{0,40}([\d,]+\.\d{2})`)
+	taxIDRegex          = regexp.MustCompile(`\b\d{13}\b`)
+	floatRegex          = regexp.MustCompile(`[\d,]+\.\d{2}`)
+	vatAmtRegex         = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d]{0,120}([\d,]+\.\d{2})`)
+	beforeVATRegex      = regexp.MustCompile(`(?:มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี|ราคาสินค้า|มูลค่าสินค้า|รวมก่อนภาษี|ราคารวมก่อน)[^\d]{0,120}([\d,]+\.\d{2})`)
+	totalAmtRegex       = regexp.MustCompile(`(?:รวมจำนวนเงินทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|จำนวนเงินรวม|รวมเงิน)[^\d]{0,120}([\d,]+\.\d{2})`)
+	vatInclSubtotalRegex = regexp.MustCompile(`(?:มูลค่าที่มีภาษี|ราคารวมภาษี)[^\d]{0,120}([\d,]+\.\d{2})`)
 	invoiceNoRegex = regexp.MustCompile(`(?:เลขที่(?:ใบกำกับ(?:ภาษี)?)?)[^\w\n]{0,10}([\w\-/\.]+)`)
 	numDateRegex   = regexp.MustCompile(`(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})`)
 	thaiDateRegex  = regexp.MustCompile(`(\d{1,2})\s+(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s+(\d{4})`)
@@ -165,6 +166,13 @@ func parseInvoiceFromText(text string) InvoiceData {
 	if m := vatAmtRegex.FindStringSubmatch(text); len(m) > 1 {
 		if f, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64); err == nil {
 			data.VATAmount = f
+		}
+	}
+
+	// VAT-inclusive subtotal — มูลค่าที่มีภาษี (line-item total including VAT, used in vat_inclusive receipts)
+	if m := vatInclSubtotalRegex.FindStringSubmatch(text); len(m) > 1 {
+		if f, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64); err == nil {
+			data.VatInclusiveSubtotal = f
 		}
 	}
 

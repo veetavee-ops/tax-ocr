@@ -220,9 +220,9 @@ func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdat
 			vat_exempt_amount     = CASE WHEN $15 != 0  THEN $15 ELSE vat_exempt_amount END,
 			vat_inclusive_subtotal= CASE WHEN $16 != 0  THEN $16 ELSE vat_inclusive_subtotal END,
 			discount_amount       = CASE WHEN $17 != 0  THEN $17 ELSE discount_amount END,
-			total_before_vat      = CASE WHEN $18 != 0  THEN $18 ELSE total_before_vat END,
-			vat_amount            = CASE WHEN $19 != 0  THEN $19 ELSE vat_amount END,
-			total_amount          = CASE WHEN $20 != 0  THEN $20 ELSE total_amount END,
+			total_before_vat      = $18,
+			vat_amount            = $19,
+			total_amount          = $20,
 			vat_math_ok           = $21,
 			status                = CASE WHEN $22 != '' THEN $22 ELSE status END,
 			updated_at            = NOW()

@@ -134,22 +134,48 @@ func (g *gptClient) extractFromImage(ctx context.Context, imageBytes []byte, con
 }
 
 func (g *gptClient) extractFromText(ctx context.Context, rawText string) (InvoiceData, error) {
-	return g.extractFromTextWithContext(ctx, rawText, "", false)
+	return g.extractFromTextWithContext(ctx, rawText, "", false, InvoiceData{})
 }
 
 // extractFromTextWithContext injects pre-classified doc_type and vat_inclusive (detected by Vision
 // keyword rules) into the prompt so GPT does not need to figure these out from Thai text.
-func (g *gptClient) extractFromTextWithContext(ctx context.Context, rawText, docType string, vatInclusive bool) (InvoiceData, error) {
+// visionHints carries values Vision regex already extracted — used as math anchors when vat_inclusive=true.
+func (g *gptClient) extractFromTextWithContext(ctx context.Context, rawText, docType string, vatInclusive bool, visionHints InvoiceData) (InvoiceData, error) {
 	vatDesc := "ราคาสินค้าในตาราง EXCLUDE VAT (ยังไม่รวม VAT) — total_before_vat คือ sum of line items"
 	if vatInclusive {
-		vatDesc = "ราคาสินค้าในตาราง INCLUDE VAT แล้ว — total_before_vat ต้องใช้ค่าจากป้าย มูลค่าสินค้าก่อนภาษี ใน footer เท่านั้น"
+		vatDesc = "ราคาสินค้าในตาราง INCLUDE VAT แล้ว — total_before_vat ต้องใช้ค่าจากป้าย มูลค่าสินค้าก่อนภาษี ใน footer เท่านั้น (ไม่ใช่ มูลค่าที่มีภาษี)"
 	}
 
 	ctx0 := ""
 	if docType != "" {
 		ctx0 = "PRE-CLASSIFIED (confirmed from document text — do not override):\n" +
 			"  doc_type: " + docType + "\n" +
-			"  vat_inclusive: " + boolStr(vatInclusive) + " — " + vatDesc + "\n\n"
+			"  vat_inclusive: " + boolStr(vatInclusive) + " — " + vatDesc + "\n"
+
+		// When vat_inclusive=true and Vision found the inclusive subtotal, provide explicit math
+		// so GPT doesn't confuse มูลค่าที่มีภาษี (2082) with total_before_vat (1945.79).
+		if vatInclusive && visionHints.VatInclusiveSubtotal > 0 {
+			preVAT := visionHints.VatInclusiveSubtotal / 1.07
+			vatAmt := visionHints.VatInclusiveSubtotal - preVAT
+			ctx0 += fmt.Sprintf(
+				"  VISION HINT: มูลค่าที่มีภาษี=%.2f → vat_inclusive_subtotal=%.2f, total_before_vat≈%.2f, vat_amount≈%.2f\n"+
+					"  → total_before_vat MUST be ~%.2f (NOT %.2f)\n",
+				visionHints.VatInclusiveSubtotal,
+				visionHints.VatInclusiveSubtotal,
+				preVAT, vatAmt, preVAT,
+				visionHints.VatInclusiveSubtotal,
+			)
+		} else if vatInclusive && visionHints.TotalAmount > 0 {
+			// Fallback: derive from total_amount if subtotal not found
+			preVAT := visionHints.TotalAmount / 1.07
+			vatAmt := visionHints.TotalAmount - preVAT
+			ctx0 += fmt.Sprintf(
+				"  VISION HINT: total_amount=%.2f → estimated total_before_vat≈%.2f, vat_amount≈%.2f\n",
+				visionHints.TotalAmount, preVAT, vatAmt,
+			)
+		}
+
+		ctx0 += "\n"
 	}
 
 	userMsg := ctx0 + "Extract all invoice data from this Thai invoice text. Return JSON:\n" +

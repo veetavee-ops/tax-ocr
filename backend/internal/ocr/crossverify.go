@@ -23,11 +23,16 @@ func crossVerify(gpt, vision InvoiceData) verifyResult {
 		r.taxIDMatch = true
 	}
 
-	// Total + VAT cross-check between GPT and Vision
-	if vision.TotalAmount == 0 {
+	// Total + VAT cross-check between GPT and Vision.
+	// Ignore Vision total if it looks like a regex false positive (< 1% of GPT total).
+	visionTotal := vision.TotalAmount
+	if gpt.TotalAmount > 0 && visionTotal > 0 && visionTotal < gpt.TotalAmount*0.01 {
+		visionTotal = 0 // false positive — Vision regex matched a small number near the label
+	}
+	if visionTotal == 0 {
 		r.totalsMatch = true
 	} else {
-		totalOK := math.Abs(gpt.TotalAmount-vision.TotalAmount) <= amountTolerance
+		totalOK := math.Abs(gpt.TotalAmount-visionTotal) <= amountTolerance
 		vatCrossOK := vision.VATAmount == 0 || math.Abs(gpt.VATAmount-vision.VATAmount) <= amountTolerance
 		r.totalsMatch = totalOK && vatCrossOK
 	}

@@ -152,7 +152,7 @@ func (s *Service) dualExtract(ctx context.Context, req ExtractionRequest, gpt *g
 	if gpt != nil {
 		var err error
 		if rawText != "" {
-			gptData, err = gpt.extractFromTextWithContext(ctx, rawText, docType, vatInclusive)
+			gptData, err = gpt.extractFromTextWithContext(ctx, rawText, docType, vatInclusive, visionData)
 		} else if len(req.FileBytes) > 0 {
 			gptData, err = gpt.extractFromImage(ctx, req.FileBytes, req.ContentType)
 		}
