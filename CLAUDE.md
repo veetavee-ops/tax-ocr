@@ -557,3 +557,86 @@ Archive  → MinIO Cold Storage (ตาม archive_days ของ tenant)
 ---
 
 *อัพเดทล่าสุด: สร้างจากการออกแบบร่วมกับ Architect*
+
+---
+
+## 10. Session Status
+> **สำหรับ AI:** section นี้คือ memory ข้ามสรรหา อัปเดตทุกครั้งที่ผู้ใช้สั่ง "mem" หรือ "บันทึก session" หรือ "save"
+> อัปเดต in-place — ไม่ต้องสร้างไฟล์ใหม่
+
+### วิธีรัน Local Dev
+```powershell
+cd e:\tax-ocr\infrastructure && docker compose up -d
+cd e:\tax-ocr\backend        && go run ./cmd/          # port 8080 (auto-migrate)
+cd e:\tax-ocr\frontend\admin && npm run dev            # port 3000
+cd e:\tax-ocr\frontend\liff  && npm run dev            # port 5174
+```
+- Login: veetavee@gmail.com / test1234
+- PostgreSQL host port: **5433**, Redis: **6380**
+- DB shell: `docker exec -it tax-ocr-postgres psql -U tax_ocr -d tax_ocr`
+- ⚠️ รัน backend: `go run ./cmd/` ไม่ใช่ `./cmd/...` (มี 2 packages แล้ว)
+
+### Migration
+```powershell
+go run ./cmd/migrate/ -stamp   # DB เดิมที่ยังไม่มี schema_migrations (ทำครั้งเดียว)
+go run ./cmd/migrate/          # apply migrations ที่ยังไม่ได้ run
+```
+
+### อัพเดท: 2026-06-05 (session 8)
+
+### ✅ Done (สิ่งที่สร้างแล้ว)
+- Infrastructure: Docker Compose (PostgreSQL/Redis/MinIO), 26 migrations ครบ
+- Backend: 69+ endpoints, OCR dual-engine, Asynq queue, HITL, reviewer, audit, archive, LINE webhook
+- Migration runner: `db/migrate.go` + `cmd/migrate/` + auto-migrate on startup + Makefile
+- Admin UI: InvoiceDetail (image viewer inline edit verify), Invoices, Settings
+- LIFF: Login, branch select, upload, status, conversation
+- **M3**: JWT refresh token — access 1h + refresh 7d
+- **M4**: uploadFromLink SSRF guard
+- **M10**: Rate limit login — 10 req/min per IP
+- **M12**: LINE push หาลูกค้าเมื่อ OCR เสร็จ (`worker.go` + `main.go`)
+- **M13**: Admin reply → push LINE OA (`conversation_handler.go`)
+
+### ✅ Session 8 — LINE Notify + OCR Architecture Fix (2026-06-05)
+
+**M12/M13 — LINE Notifications:**
+- `queue/worker.go` — หลัง OCR เสร็จ goroutine `notifyLineUser`: lookup DocumentImport→User→LineUserID → push verified/conflict message
+- `cmd/main.go` — ส่ง `lineClient` ให้ `NewWorker`
+- `api/conversation_handler.go` — `sendMessage` sender_type=admin → goroutine `pushConvMessageToLine` → push ให้ลูกค้า
+
+**OCR Architecture Fix (critical):**
+- `ocr/service.go` — เปลี่ยน flow: Vision อ่าน image → raw Thai text → GPT รับ text (ไม่ใช่ image) ไป identify fields
+  - ก่อน: GPT อ่านรูปตรง → ภาษาไทยผิด → field ผิดตั้งแต่ต้น
+  - หลัง: Vision อ่านตัวอักษรแม่น → GPT เข้าใจ semantic → แยกหน้าที่ถูกต้อง
+- `ocr/service.go` — Merge strategy: Vision เป็น authority ด้านตัวเลข (total_before_vat, vat, total), GPT เป็น authority ด้าน structure (vendor, items)
+- `ocr/service.go` — log `[ocr/vision]` และ `[ocr/gpt]` แยกกันก่อน merge เพื่อ debug
+
+**Vision Regex Fixes (`ocr/vision.go`):**
+- `vatAmtRegex` — เพิ่ม `ภาษี\s*[\d.]+\s*%` จับ format "ภาษี 7.00 % 136.21" (ก่อนหน้าจับแค่ "ภาษีมูลค่าเพิ่ม|VAT")
+- `beforeVATRegex` — เพิ่ม `มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี`
+- `totalAmtRegex` — ใหม่: จับ "รวมจำนวนเงินทั้งสิ้น" แทน "largest number" heuristic เดิม
+
+**GPT Prompt Fix (`ocr/gpt.go`):**
+- เพิ่ม Rule 6: VAT-inclusive invoice (ราคาในตารางรวม VAT แล้ว) — ให้ใช้ "มูลค่าสินค้าก่อนภาษี" จาก footer ไม่ใช่ "มูลค่าที่มีภาษี"
+- เพิ่ม warning: "มูลค่าที่มีภาษี" = VAT-inclusive amount ห้ามใช้เป็น total_before_vat
+
+**total_before_vat ต้องยืนยันก่อนแสดง:**
+- `db/invoice_store.go` — `UpdateInvoiceAmounts` รับ `total_before_vat` ด้วย (เดิมรับแค่ vat+total)
+- `api/invoice_handler.go` — `verifyInvoice` รับ `total_before_vat` จาก wizard → บันทึก DB พร้อม vat+total
+- `frontend/InvoiceDetail.jsx` — header "ก่อน VAT" แสดง "รอยืนยัน" เมื่อ status ≠ verified (เหมือน VAT/Total)
+- `frontend/VerificationWizard.jsx` — ส่ง `total_before_vat` ใน verify payload
+
+### ⚠️ รอทดสอบ session ใหม่
+- Re-run OCR แล้วดู backend log: `[ocr/vision]` และ `[ocr/gpt]` แยกกัน
+- ใบ VAT-inclusive ควรได้: before_vat=1,945.79, vat=136.21, total=2,082.00
+- Header "ก่อน VAT" แสดง "รอยืนยัน" จนกว่า wizard จะ confirm
+
+### 🟡 ค้างอยู่ — ก่อน Production
+(ไม่มี M12/M13 แล้ว — ทำเสร็จแล้ว session นี้)
+
+### 🔵 Phase ถัดไป
+- OneDrive API, PDF OCR → HITL, Password reset
+
+### Production Plan (ยังไม่ถึงเวลา)
+- Target: Hetzner CX22 (~€4/เดือน), Docker Compose
+- ต้องทำก่อน: Dockerfile x3, nginx+SSL, LINE OA
+- **อย่าสร้าง Dockerfile จนกว่าจะได้รับคำสั่ง**

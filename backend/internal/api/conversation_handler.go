@@ -1,9 +1,13 @@
 package api
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
 
 	"tax-ocr/backend/internal/db"
+	rev "tax-ocr/backend/internal/reviewer"
 )
 
 func (s *server) listConversations(w http.ResponseWriter, r *http.Request) {
@@ -75,5 +79,22 @@ func (s *server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+
+	if req.SenderType == "admin" && req.MessageType == "text" {
+		go s.pushConvMessageToLine(r.PathValue("id"), req.Content)
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{"data": msg})
+}
+
+func (s *server) pushConvMessageToLine(convID, content string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conv, err := s.store.GetConversation(ctx, convID)
+	if err != nil || conv.LineUserID == "" {
+		return
+	}
+	if err := rev.NewLineClient(s.lineToken).Push(conv.LineUserID, content); err != nil {
+		log.Printf("[conv] line push conv=%s: %v", convID, err)
+	}
 }
