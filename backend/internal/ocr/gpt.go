@@ -98,7 +98,12 @@ CRITICAL RULES:
 2. Do NOT adjust numbers to make arithmetic balance. Report what is printed.
 3. Tax IDs must be exactly 13 digits — strip spaces, dashes, parentheses.
 4. Missing text → ""; missing number → 0
-5. Return raw JSON only, no markdown fences.`
+5. Return raw JSON only, no markdown fences.
+6. discount_amount is the TRADE DISCOUNT row only (usually 0). It is NOT the pre-VAT base.
+   If discount_amount ≈ total_before_vat that means you made an error — set discount_amount = 0.
+7. The footer table often has 3-column headers: มูลค่าที่ยกเว้นภาษี | มูลค่าที่มีภาษี | ส่วนลดรวม
+   and 3-column values below: มูลค่าสินค้าก่อนภาษี | ภาษีมูลค่าเพิ่ม | รวมจำนวนเงินทั้งสิ้น
+   Do NOT cross-map headers from row 1 to values from row 2. Each label belongs to its own value on the same row.`
 
 func (g *gptClient) extractFromImage(ctx context.Context, imageBytes []byte, contentType string) (InvoiceData, error) {
 	b64 := base64.StdEncoding.EncodeToString(imageBytes)
@@ -129,7 +134,25 @@ func (g *gptClient) extractFromImage(ctx context.Context, imageBytes []byte, con
 }
 
 func (g *gptClient) extractFromText(ctx context.Context, rawText string) (InvoiceData, error) {
-	userMsg := "Extract all invoice data from this Thai tax invoice text. Return JSON:\n" +
+	return g.extractFromTextWithContext(ctx, rawText, "", false)
+}
+
+// extractFromTextWithContext injects pre-classified doc_type and vat_inclusive (detected by Vision
+// keyword rules) into the prompt so GPT does not need to figure these out from Thai text.
+func (g *gptClient) extractFromTextWithContext(ctx context.Context, rawText, docType string, vatInclusive bool) (InvoiceData, error) {
+	vatDesc := "ราคาสินค้าในตาราง EXCLUDE VAT (ยังไม่รวม VAT) — total_before_vat คือ sum of line items"
+	if vatInclusive {
+		vatDesc = "ราคาสินค้าในตาราง INCLUDE VAT แล้ว — total_before_vat ต้องใช้ค่าจากป้าย มูลค่าสินค้าก่อนภาษี ใน footer เท่านั้น"
+	}
+
+	ctx0 := ""
+	if docType != "" {
+		ctx0 = "PRE-CLASSIFIED (confirmed from document text — do not override):\n" +
+			"  doc_type: " + docType + "\n" +
+			"  vat_inclusive: " + boolStr(vatInclusive) + " — " + vatDesc + "\n\n"
+	}
+
+	userMsg := ctx0 + "Extract all invoice data from this Thai invoice text. Return JSON:\n" +
 		invoiceJSONSchema + "\n\nInvoice text:\n" + rawText
 
 	body := map[string]any{
@@ -143,6 +166,13 @@ func (g *gptClient) extractFromText(ctx context.Context, rawText string) (Invoic
 	}
 
 	return g.sendRequest(ctx, body)
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func (g *gptClient) sendRequest(ctx context.Context, body map[string]any) (InvoiceData, error) {

@@ -136,14 +136,23 @@ func (s *Service) dualExtract(ctx context.Context, req ExtractionRequest, gpt *g
 		visionData = parseInvoiceFromText(text)
 	}
 
+	// Step 2: Rule-based classification from Vision raw text.
+	// Vision reads Thai characters accurately; rules detect doc_type + vat_inclusive
+	// without relying on GPT to understand Thai semantics.
+	docType, vatInclusive := classifyFromText(rawText)
+	log.Printf("[ocr/vision/raw] %s", rawText)
+	log.Printf("[ocr/classify] doc_type=%s vat_inclusive=%v", docType, vatInclusive)
+	log.Printf("[ocr/vision] tax_id=%q before_vat=%.2f vat=%.2f total=%.2f",
+		visionData.VendorTaxID, visionData.TotalBeforeVAT, visionData.VATAmount, visionData.TotalAmount)
+
+	// Step 3: GPT extracts ALL fields. It receives Vision's raw text + pre-classified context
+	// so it knows the document type and VAT treatment without reading Thai on its own.
+	// GPT is the sole authority for extracted values — no Vision override.
 	var gptData InvoiceData
 	if gpt != nil {
 		var err error
-		// Vision reads Thai characters accurately → feed that text to GPT.
-		// GPT's job is field identification (which label = which field), not pixel reading.
-		// Only fall back to image if Vision produced no text.
 		if rawText != "" {
-			gptData, err = gpt.extractFromText(ctx, rawText)
+			gptData, err = gpt.extractFromTextWithContext(ctx, rawText, docType, vatInclusive)
 		} else if len(req.FileBytes) > 0 {
 			gptData, err = gpt.extractFromImage(ctx, req.FileBytes, req.ContentType)
 		}
@@ -152,11 +161,9 @@ func (s *Service) dualExtract(ctx context.Context, req ExtractionRequest, gpt *g
 		}
 	}
 
-	log.Printf("[ocr/vision/raw] %s", rawText)
-	log.Printf("[ocr/vision] tax_id=%q before_vat=%.2f vat=%.2f total=%.2f",
-		visionData.VendorTaxID, visionData.TotalBeforeVAT, visionData.VATAmount, visionData.TotalAmount)
-	log.Printf("[ocr/gpt]    tax_id=%q before_vat=%.2f vat=%.2f total=%.2f items=%d",
-		gptData.VendorTaxID, gptData.TotalBeforeVAT, gptData.VATAmount, gptData.TotalAmount, len(gptData.Items))
+	log.Printf("[ocr/gpt] tax_id=%q before_vat=%.2f vat=%.2f total=%.2f items=%d doc_type=%s vat_inc=%v",
+		gptData.VendorTaxID, gptData.TotalBeforeVAT, gptData.VATAmount, gptData.TotalAmount,
+		len(gptData.Items), gptData.DocType, gptData.VatInclusive)
 
 	verify := crossVerify(gptData, visionData)
 	confidence := 0.6
@@ -164,21 +171,8 @@ func (s *Service) dualExtract(ctx context.Context, req ExtractionRequest, gpt *g
 		confidence = 0.95
 	}
 
-	// Merge: GPT owns structure (vendor info, invoice no, date, line items).
-	// Vision owns financial amounts — it reads printed digits more reliably than GPT.
-	merged := gptData
-	if visionData.TotalBeforeVAT > 0 {
-		merged.TotalBeforeVAT = visionData.TotalBeforeVAT
-	}
-	if visionData.VATAmount > 0 {
-		merged.VATAmount = visionData.VATAmount
-	}
-	if visionData.TotalAmount > 0 {
-		merged.TotalAmount = visionData.TotalAmount
-	}
-
 	return ExtractionResult{
-		Data:        merged,
+		Data:        gptData,
 		Matched:     verify.matched,
 		VATMathOK:   verify.vatMathOK,
 		RawText:     rawText,

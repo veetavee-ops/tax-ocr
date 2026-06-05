@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -60,7 +61,7 @@ func (c *Client) Upload(ctx context.Context, tenantID string, filename string, r
 	now := time.Now().UTC()
 	objectPath := fmt.Sprintf("%s/%d/%02d/%s%s", tenantID, now.Year(), now.Month(), uuid.NewString(), ext)
 
-	_, err = c.mc.PutObject(ctx, c.bucket, objectPath, strings.NewReader(string(data)), int64(len(data)), minio.PutObjectOptions{
+	_, err = c.mc.PutObject(ctx, c.bucket, objectPath, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType: contentType,
 	})
 	if err != nil {

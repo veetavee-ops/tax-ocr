@@ -81,9 +81,9 @@ func (v *visionClient) extractText(ctx context.Context, imageBytes []byte) (stri
 var (
 	taxIDRegex     = regexp.MustCompile(`\b\d{13}\b`)
 	floatRegex     = regexp.MustCompile(`[\d,]+\.\d{2}`)
-	vatAmtRegex    = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d]{0,30}([\d,]+\.\d{2})`)
-	beforeVATRegex = regexp.MustCompile(`(?:มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี|ราคาสินค้า|มูลค่าสินค้า|รวมก่อนภาษี|ราคารวมก่อน)[^\d\n]{0,20}([\d,]+\.\d{2})`)
-	totalAmtRegex  = regexp.MustCompile(`(?:รวมจำนวนเงินทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|จำนวนเงินรวม|รวมเงิน)[^\d\n]{0,20}([\d,]+\.\d{2})`)
+	vatAmtRegex    = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d]{0,40}([\d,]+\.\d{2})`)
+	beforeVATRegex = regexp.MustCompile(`(?:มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี|ราคาสินค้า|มูลค่าสินค้า|รวมก่อนภาษี|ราคารวมก่อน)[^\d]{0,40}([\d,]+\.\d{2})`)
+	totalAmtRegex  = regexp.MustCompile(`(?:รวมจำนวนเงินทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|จำนวนเงินรวม|รวมเงิน)[^\d]{0,40}([\d,]+\.\d{2})`)
 	invoiceNoRegex = regexp.MustCompile(`(?:เลขที่(?:ใบกำกับ(?:ภาษี)?)?)[^\w\n]{0,10}([\w\-/\.]+)`)
 	numDateRegex   = regexp.MustCompile(`(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})`)
 	thaiDateRegex  = regexp.MustCompile(`(\d{1,2})\s+(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s+(\d{4})`)
@@ -93,6 +93,33 @@ var thaiMonthNum = map[string]int{
 	"มกราคม": 1, "กุมภาพันธ์": 2, "มีนาคม": 3, "เมษายน": 4,
 	"พฤษภาคม": 5, "มิถุนายน": 6, "กรกฎาคม": 7, "สิงหาคม": 8,
 	"กันยายน": 9, "ตุลาคม": 10, "พฤศจิกายน": 11, "ธันวาคม": 12,
+}
+
+var (
+	// VAT-inclusive: footer has "มูลค่าที่มีภาษี" column — only present when line-item prices include VAT
+	vatInclusiveMarker = regexp.MustCompile(`มูลค่าที่มีภาษี|ราคารวมภาษี|รวมภาษีแล้ว`)
+	docTypeTax         = regexp.MustCompile(`ใบกำกับภาษี`)
+	docTypeReceipt     = regexp.MustCompile(`ใบเสร็จรับเงิน`)
+	docTypeDelivery    = regexp.MustCompile(`ใบส่งสินค้า`)
+)
+
+// classifyFromText uses keyword detection on Vision raw text to determine document type and
+// whether line-item prices already include VAT. Returns (docType, vatInclusive).
+// Called BEFORE GPT so the classification can be injected as context into the GPT prompt.
+func classifyFromText(text string) (string, bool) {
+	vatInclusive := vatInclusiveMarker.MatchString(text)
+
+	docType := "unknown"
+	switch {
+	case docTypeTax.MatchString(text):
+		docType = "tax_invoice"
+	case docTypeReceipt.MatchString(text):
+		docType = "receipt"
+	case docTypeDelivery.MatchString(text):
+		docType = "delivery_note"
+	}
+
+	return docType, vatInclusive
 }
 
 // parseInvoiceFromText heuristically extracts invoice header fields from raw OCR text.
