@@ -81,7 +81,7 @@ func (v *visionClient) extractText(ctx context.Context, imageBytes []byte) (stri
 var (
 	taxIDRegex     = regexp.MustCompile(`\b\d{13}\b`)
 	floatRegex     = regexp.MustCompile(`[\d,]+\.\d{2}`)
-	vatAmtRegex    = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d\n]{0,20}([\d,]+\.\d{2})`)
+	vatAmtRegex    = regexp.MustCompile(`(?:ภาษีมูลค่าเพิ่ม|VAT|ภาษี\s*[\d.]+\s*%)[^\d]{0,30}([\d,]+\.\d{2})`)
 	beforeVATRegex = regexp.MustCompile(`(?:มูลค่าสินค้าก่อนภาษี|มูลค่าสุทธิก่อนภาษี|ฐานภาษี|ราคาสินค้า|มูลค่าสินค้า|รวมก่อนภาษี|ราคารวมก่อน)[^\d\n]{0,20}([\d,]+\.\d{2})`)
 	totalAmtRegex  = regexp.MustCompile(`(?:รวมจำนวนเงินทั้งสิ้น|รวมทั้งสิ้น|ยอดรวมทั้งสิ้น|จำนวนเงินรวม|รวมเงิน)[^\d\n]{0,20}([\d,]+\.\d{2})`)
 	invoiceNoRegex = regexp.MustCompile(`(?:เลขที่(?:ใบกำกับ(?:ภาษี)?)?)[^\w\n]{0,10}([\w\-/\.]+)`)

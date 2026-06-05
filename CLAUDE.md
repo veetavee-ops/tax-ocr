@@ -625,10 +625,34 @@ go run ./cmd/migrate/          # apply migrations ที่ยังไม่ไ
 - `frontend/InvoiceDetail.jsx` — header "ก่อน VAT" แสดง "รอยืนยัน" เมื่อ status ≠ verified (เหมือน VAT/Total)
 - `frontend/VerificationWizard.jsx` — ส่ง `total_before_vat` ใน verify payload
 
-### ⚠️ รอทดสอบ session ใหม่
-- Re-run OCR แล้วดู backend log: `[ocr/vision]` และ `[ocr/gpt]` แยกกัน
-- ใบ VAT-inclusive ควรได้: before_vat=1,945.79, vat=136.21, total=2,082.00
-- Header "ก่อน VAT" แสดง "รอยืนยัน" จนกว่า wizard จะ confirm
+### 🐛 Bug List — ต้องแก้ session ถัดไป (พบจากทดสอบจริง 2026-06-05)
+
+**B1 — total_before_vat ยังอ่านได้ 2,082.00 (ควร 1,945.79)**
+- Vision regex `beforeVATRegex` น่าจะยังจับ "มูลค่าสินค้าก่อนภาษี 1,945.79" ไม่ได้
+- แผน debug: ต้องเพิ่ม log raw Vision OCR text เพื่อดูว่า text จริงออกมาเป็นอะไร
+- สาเหตุที่เป็นไปได้: Vision อ่าน 2 คอลัมน์ทำให้ text ไหล layout แปลก, regex ไม่ match
+
+**B2 — VAT อ่านได้ 136.00 ไม่ใช่ 136.21**
+- Vision อ่านเลขทศนิยมผิด หรือ `vatAmtRegex` จับ "136.00" จากบรรทัดอื่น
+- "ภาษี 7.00 % 136.21" — regex ใหม่ควร match แต่ถ้า Vision ขึ้นบรรทัดใหม่ระหว่าง % กับ 136.21 จะไม่ match (เพราะ `[^\d\n]` excludes `\n`)
+- แผนแก้: เปลี่ยน `[^\d\n]{0,20}` → `[^\d]{0,30}` (allow newline ระหว่าง % กับตัวเลข)
+
+**B3 — Wizard Level 3 แสดง "2,082.00 + 0.00"**
+- `chosenVAT` ถูก init เป็น `invoice.vat_amount` — ถ้า DB มี vat_amount=0 จะได้ chosenVAT=0
+- สาเหตุ: worker บันทึก OCR data แล้ว vat_amount อาจยังเป็น 0 (Vision อ่านไม่ได้เพราะ B2)
+- Level 3 formula `before_vat + chosenVAT = 2082 + 0 = 2082` บังเอิญตรงกับ total → แสดง ✓ ทั้งที่ผิด
+
+**B4 — Wizard Level 2 คำนวณผิด base**
+- ใช้ `invoice.total_before_vat × 7%` = 2,082 × 7% = 145.74 (ผิด)
+- หลังแก้ B1 จะได้ total_before_vat=1,945.79 → 1,945.79 × 7% = 136.21 ✓ แก้เองอัตโนมัติ
+
+**วิธี debug B1/B2 ขั้นแรก:**
+```
+restart backend → Re-run OCR → ดู log:
+[ocr/vision] tax_id=... before_vat=? vat=? total=?
+[ocr/gpt]    tax_id=... before_vat=? vat=? total=?
+```
+ถ้า vision before_vat ยังผิด → เพิ่ม `log.Printf("[ocr/vision/rawtext] %s", rawText)` แล้วดู text จริง
 
 ### 🟡 ค้างอยู่ — ก่อน Production
 (ไม่มี M12/M13 แล้ว — ทำเสร็จแล้ว session นี้)

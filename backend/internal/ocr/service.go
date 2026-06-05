@@ -152,6 +152,7 @@ func (s *Service) dualExtract(ctx context.Context, req ExtractionRequest, gpt *g
 		}
 	}
 
+	log.Printf("[ocr/vision/raw] %s", rawText)
 	log.Printf("[ocr/vision] tax_id=%q before_vat=%.2f vat=%.2f total=%.2f",
 		visionData.VendorTaxID, visionData.TotalBeforeVAT, visionData.VATAmount, visionData.TotalAmount)
 	log.Printf("[ocr/gpt]    tax_id=%q before_vat=%.2f vat=%.2f total=%.2f items=%d",
