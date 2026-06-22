@@ -157,8 +157,9 @@ func (s *server) listTenants(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createTenant(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name  string `json:"name"`
-		TaxID string `json:"tax_id"`
+		Name         string `json:"name"`
+		TaxID        string `json:"tax_id"`
+		BusinessType string `json:"business_type"`
 	}
 
 	if err := readJSON(r, &req); err != nil {
@@ -166,7 +167,7 @@ func (s *server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.CreateTenant(r.Context(), req.Name, req.TaxID)
+	tenant, err := s.store.CreateTenant(r.Context(), req.Name, req.TaxID, req.BusinessType)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, db.ErrDuplicateTaxID) {
@@ -191,8 +192,9 @@ func (s *server) getTenant(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) updateTenant(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
+		Name         string `json:"name"`
+		Status       string `json:"status"`
+		BusinessType string `json:"business_type"`
 	}
 
 	if err := readJSON(r, &req); err != nil {
@@ -200,7 +202,7 @@ func (s *server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.UpdateTenant(r.Context(), r.PathValue("id"), req.Name, req.Status)
+	tenant, err := s.store.UpdateTenant(r.Context(), r.PathValue("id"), req.Name, req.Status, req.BusinessType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return

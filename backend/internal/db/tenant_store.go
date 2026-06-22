@@ -9,9 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const tenantCols = `id, name, tax_id, status, COALESCE(business_type,'service'), created_at, updated_at`
+
+func scanTenant(scan func(dest ...any) error, t *Tenant) error {
+	return scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.BusinessType, &t.CreatedAt, &t.UpdatedAt)
+}
+
 func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, tax_id, status, created_at, updated_at FROM tenants ORDER BY created_at DESC`)
+	rows, err := s.pool.Query(ctx, `SELECT `+tenantCols+` FROM tenants ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -20,7 +25,7 @@ func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
 	var items []Tenant
 	for rows.Next() {
 		var t Tenant
-		if err := rows.Scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := scanTenant(rows.Scan, &t); err != nil {
 			return nil, err
 		}
 		items = append(items, t)
@@ -30,25 +35,36 @@ func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
 
 func (s *Store) GetTenant(ctx context.Context, id string) (Tenant, error) {
 	var t Tenant
-	err := s.pool.QueryRow(ctx,
-		`SELECT id, name, tax_id, status, created_at, updated_at FROM tenants WHERE id = $1`, id).
-		Scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+	err := scanTenant(s.pool.QueryRow(ctx, `SELECT `+tenantCols+` FROM tenants WHERE id = $1`, id).Scan, &t)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tenant{}, ErrNotFound
 	}
 	return t, err
 }
 
-func (s *Store) CreateTenant(ctx context.Context, name, taxID string) (Tenant, error) {
+func (s *Store) GetBranch(ctx context.Context, id string) (Branch, error) {
+	var b Branch
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, tenant_id, name, code, status, created_at, updated_at FROM branches WHERE id = $1`, id).
+		Scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Status, &b.CreatedAt, &b.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Branch{}, ErrNotFound
+	}
+	return b, err
+}
+
+func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType string) (Tenant, error) {
 	if name == "" || taxID == "" {
 		return Tenant{}, ErrInvalidInput
 	}
+	if businessType == "" {
+		businessType = "service"
+	}
 	var t Tenant
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO tenants (name, tax_id) VALUES ($1, $2)
-		 RETURNING id, name, tax_id, status, created_at, updated_at`,
-		name, taxID).
-		Scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+	err := scanTenant(s.pool.QueryRow(ctx,
+		`INSERT INTO tenants (name, tax_id, business_type) VALUES ($1, $2, $3)
+		 RETURNING `+tenantCols,
+		name, taxID, businessType).Scan, &t)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -59,17 +75,17 @@ func (s *Store) CreateTenant(ctx context.Context, name, taxID string) (Tenant, e
 	return t, nil
 }
 
-func (s *Store) UpdateTenant(ctx context.Context, id, name, status string) (Tenant, error) {
+func (s *Store) UpdateTenant(ctx context.Context, id, name, status, businessType string) (Tenant, error) {
 	var t Tenant
-	err := s.pool.QueryRow(ctx,
+	err := scanTenant(s.pool.QueryRow(ctx,
 		`UPDATE tenants SET
-			name = COALESCE(NULLIF($2,''), name),
-			status = COALESCE(NULLIF($3,''), status),
-			updated_at = NOW()
+			name          = COALESCE(NULLIF($2,''), name),
+			status        = COALESCE(NULLIF($3,''), status),
+			business_type = COALESCE(NULLIF($4,''), business_type),
+			updated_at    = NOW()
 		 WHERE id = $1
-		 RETURNING id, name, tax_id, status, created_at, updated_at`,
-		id, name, status).
-		Scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+		 RETURNING `+tenantCols,
+		id, name, status, businessType).Scan, &t)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tenant{}, ErrNotFound
 	}

@@ -23,12 +23,13 @@ var (
 )
 
 type Tenant struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TaxID     string    `json:"tax_id"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	TaxID        string    `json:"tax_id"`
+	Status       string    `json:"status"`
+	BusinessType string    `json:"business_type"` // trading / service / construction
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Branch struct {
@@ -114,11 +115,12 @@ type Invoice struct {
 	TotalAmount          float64 `json:"total_amount"`
 	VatMathOK            bool    `json:"vat_math_ok"`
 	// Status
-	Status     string     `json:"status"`
-	VerifiedBy string     `json:"verified_by,omitempty"`
-	VerifiedAt *time.Time `json:"verified_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	Status        string     `json:"status"`
+	InvalidReason string     `json:"invalid_reason,omitempty"`
+	VerifiedBy    string     `json:"verified_by,omitempty"`
+	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type Vendor struct {

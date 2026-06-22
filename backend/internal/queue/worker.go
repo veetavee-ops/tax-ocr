@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hibiken/asynq"
 
@@ -126,6 +127,96 @@ func parseInvoiceDate(s string) (year, month, day int) {
 	return
 }
 
+// normalizeBranchCode converts Thai HQ synonyms to the standard "00000".
+func normalizeBranchCode(code string) string {
+	code = strings.TrimSpace(code)
+	switch strings.ToUpper(code) {
+	case "สำนักงานใหญ่", "สนญ.", "สนญ", "HEAD OFFICE", "HQ", "HEADQUARTER", "00000", "0":
+		return "00000"
+	}
+	// Zero-pad numeric codes to 5 digits
+	if matched, _ := regexp.MatchString(`^\d{1,5}$`, code); matched {
+		n, _ := strconv.Atoi(code)
+		return fmt.Sprintf("%05d", n)
+	}
+	return code
+}
+
+// stringSimilarity returns a 0.0–1.0 ratio using Levenshtein distance on rune slices.
+func stringSimilarity(a, b string) float64 {
+	ra := []rune(strings.TrimSpace(a))
+	rb := []rune(strings.TrimSpace(b))
+	la, lb := utf8.RuneCountInString(string(ra)), utf8.RuneCountInString(string(rb))
+	if la == 0 && lb == 0 {
+		return 1.0
+	}
+	if la == 0 || lb == 0 {
+		return 0.0
+	}
+	// Levenshtein DP
+	prev := make([]int, lb+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr := make([]int, lb+1)
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			curr[j] = min3(curr[j-1]+1, prev[j]+1, prev[j-1]+cost)
+		}
+		prev = curr
+	}
+	dist := prev[lb]
+	maxLen := la
+	if lb > maxLen {
+		maxLen = lb
+	}
+	return 1.0 - float64(dist)/float64(maxLen)
+}
+
+func min3(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+// validateBuyer checks that the buyer info on the invoice matches this tenant/branch.
+// Returns ("", "") when all checks pass; returns (status, reason) when invalid.
+// Only validates tax_invoice doc_type — other doc types don't carry input VAT.
+func (w *Worker) validateBuyer(docType, buyerTaxID, buyerBranchCode, buyerName string, tenant db.Tenant, branch db.Branch) (status, reason string) {
+	if docType != "tax_invoice" && docType != "" {
+		return "", ""
+	}
+	// Buyer tax ID must match tenant (exact — no fuzzy)
+	if buyerTaxID != "" && buyerTaxID != tenant.TaxID {
+		return "invalid", "buyer_tax_id_mismatch"
+	}
+	// Buyer branch code must match branch (after normalization)
+	normBuyer := normalizeBranchCode(buyerBranchCode)
+	normBranch := normalizeBranchCode(branch.Code)
+	if normBuyer != "" && normBranch != "" && normBuyer != normBranch {
+		return "invalid", "buyer_branch_code_mismatch"
+	}
+	// Buyer name fuzzy match ≥ 85%
+	if buyerName != "" && tenant.Name != "" {
+		if stringSimilarity(buyerName, tenant.Name) < 0.85 {
+			return "invalid", "buyer_name_mismatch"
+		}
+	}
+	return "", ""
+}
+
 func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error {
 	var p ProcessInvoicePayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
@@ -167,6 +258,26 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 	invYear, invMonth, invDay := parseInvoiceDate(d.InvoiceDate)
 	if invYear > 0 {
 		log.Printf("[worker] invoice %s date parsed: %04d-%02d-%02d", p.InvoiceID, invYear, invMonth, invDay)
+	}
+
+	// Buyer validation and late invoice check (tax_invoice only)
+	invalidReason := ""
+	tenant, tenantErr := w.store.GetTenant(ctx, p.TenantID)
+	branch, branchErr := w.store.GetBranch(ctx, p.BranchID)
+	if tenantErr == nil && branchErr == nil {
+		if s, r := w.validateBuyer(d.DocType, d.BuyerTaxID, d.BuyerBranchCode, d.BuyerName, tenant, branch); s == "invalid" {
+			invoiceStatus = "invalid"
+			invalidReason = r
+			log.Printf("[worker] invoice %s INVALID buyer: %s", p.InvoiceID, r)
+		}
+	}
+	// Late invoice flag: invoice_date > 3 months → cannot claim input VAT on ภพ.30
+	if invoiceStatus != "invalid" && invYear > 0 {
+		invoiceDate := time.Date(invYear, time.Month(invMonth), invDay, 0, 0, 0, 0, time.UTC)
+		if time.Since(invoiceDate) > 90*24*time.Hour {
+			invalidReason = "late_invoice_vat_unclaimed"
+			log.Printf("[worker] invoice %s late invoice warning: date=%04d-%02d-%02d", p.InvoiceID, invYear, invMonth, invDay)
+		}
 	}
 
 	// Duplicate invoice detection: same vendor + same invoice_doc_no within tenant is forbidden
@@ -213,6 +324,7 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 		InvoiceMonth:         invMonth,
 		InvoiceDay:           invDay,
 		DuplicateOf:          duplicateOf,
+		InvalidReason:        invalidReason,
 		VatExemptAmount:      d.VatExemptAmount,
 		VatInclusiveSubtotal: d.VatInclusiveSubtotal,
 		DiscountAmount:       d.DiscountAmount,

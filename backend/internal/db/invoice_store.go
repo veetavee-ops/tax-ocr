@@ -16,7 +16,7 @@ const invoiceCols = `id, tenant_id, branch_id, COALESCE(document_import_id::text
 	COALESCE(buyer_name,''), COALESCE(buyer_tax_id,''), COALESCE(buyer_address,''), COALESCE(buyer_branch_code,''),
 	COALESCE(invoice_doc_no,''), COALESCE(invoice_date,''),
 	COALESCE(vat_exempt_amount,0), COALESCE(vat_inclusive_subtotal,0), COALESCE(discount_amount,0),
-	total_before_vat, vat_amount, total_amount, vat_math_ok, status,
+	total_before_vat, vat_amount, total_amount, vat_math_ok, status, COALESCE(invalid_reason,''),
 	COALESCE(verified_by::text,''), verified_at,
 	COALESCE(invoice_year,0), COALESCE(invoice_month,0), COALESCE(invoice_day,0), COALESCE(duplicate_of::text,''),
 	COALESCE(accounting_year, EXTRACT(YEAR FROM created_at)::int),
@@ -33,7 +33,7 @@ func scanInvoice(scan func(dest ...any) error, inv *Invoice) error {
 		&inv.BuyerName, &inv.BuyerTaxID, &inv.BuyerAddress, &inv.BuyerBranchCode,
 		&inv.InvoiceDocNo, &inv.InvoiceDate,
 		&inv.VatExemptAmount, &inv.VatInclusiveSubtotal, &inv.DiscountAmount,
-		&inv.TotalBeforeVat, &inv.VatAmount, &inv.TotalAmount, &inv.VatMathOK, &inv.Status,
+		&inv.TotalBeforeVat, &inv.VatAmount, &inv.TotalAmount, &inv.VatMathOK, &inv.Status, &inv.InvalidReason,
 		&inv.VerifiedBy, &inv.VerifiedAt,
 		&inv.InvoiceYear, &inv.InvoiceMonth, &inv.InvoiceDay, &inv.DuplicateOf,
 		&inv.AccountingYear, &inv.AccountingMonth,
@@ -252,6 +252,8 @@ type InvoiceUpdate struct {
 	AccountingMonth int
 	// Duplicate detection — set to existing invoice ID if this is a duplicate
 	DuplicateOf string
+	// Legal compliance failure reason; set when status = invalid or as a warning note
+	InvalidReason string
 }
 
 func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdate) error {
@@ -282,6 +284,7 @@ func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdat
 			invoice_month          = CASE WHEN $24 != 0 THEN $24 ELSE invoice_month END,
 			invoice_day            = CASE WHEN $25 != 0 THEN $25 ELSE invoice_day END,
 			duplicate_of           = COALESCE($26::uuid, duplicate_of),
+			invalid_reason         = CASE WHEN $27 != '' THEN $27 ELSE invalid_reason END,
 			updated_at             = NOW()
 		 WHERE id = $1`,
 		id,
@@ -291,7 +294,7 @@ func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdat
 		u.InvoiceDocNo, u.InvoiceDate,
 		u.VatExemptAmount, u.VatInclusiveSubtotal, u.DiscountAmount,
 		u.TotalBeforeVAT, u.VATAmount, u.TotalAmount, u.VATMathOK, u.Status,
-		u.InvoiceYear, u.InvoiceMonth, u.InvoiceDay, nullIfEmpty(u.DuplicateOf))
+		u.InvoiceYear, u.InvoiceMonth, u.InvoiceDay, nullIfEmpty(u.DuplicateOf), u.InvalidReason)
 	return err
 }
 
