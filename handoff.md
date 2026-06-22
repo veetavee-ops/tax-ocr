@@ -95,11 +95,11 @@ docker exec -it tax-ocr-postgres psql -U tax_ocr -d tax_ocr
 ```
 Branch: master
 Remote: https://github.com/veetavee-ops/tax-ocr.git
-Latest: 4d5e3af Add *.pdf to .gitignore
-        cf78cd0 Session 12c: Expand doc types, invalid reason UI, overview move
-        d58f31a Update CLAUDE.md session 12 + add handoff.md
-        6257f05 Session 12b: Add address to tenants/branches
-        f2cd10d Session 12: Buyer validation, invalid status, business_type
+Latest: 796e8eb Fix: OCR company accept images only (JPG/PNG)
+        25f629a P-01-M Create: OCR auto-fill from company registration doc
+        d22d6d6 P-01-M: unified create/edit form
+        a1df8ce P-01-M: show all fields incl. read-only ID/tax_id
+        2be4cd8 Add dev labels to all modals and popups (P-XX-M format)
 ```
 Clone สำรองไว้ที่ `d:\tax-ocr` (local clone)
 
@@ -265,13 +265,13 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 
 ### ทำได้ทันที
 - [ ] ทดสอบ buyer validation — อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น `invalid` ใน UI
-- [ ] กรอก tenant.address + branch.address ผ่านหน้า Tenants/Branches ใน Admin UI
-- [ ] ทดสอบ OCR กับ doc_type=tax_invoice, vat_inclusive=false
+- [ ] ทดสอบ OCR company extract — ถ่ายรูป/scan หนังสือรับรอง → auto-fill P-01-M Create
+- [ ] PDF OCR company — รับ digital PDF → Go PDF library extract text → GPT (ง่ายกว่า image สำหรับ PDF จาก DBD)
+- [ ] GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification
 
 ### Phase ถัดไป
-- [ ] GPT prompt: สอนให้ classify `invoice_billing` / `delivery_order` ได้
 - [ ] รายงานภาษีซื้อ (ม.87/1) — export PDF/Excel พร้อม header ที่อยู่
-- [ ] PDF OCR support
+- [ ] PDF OCR support (invoice — scanned PDF)
 - [ ] Password reset flow
 - [ ] OneDrive API integration
 
