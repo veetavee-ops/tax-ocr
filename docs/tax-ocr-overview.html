@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tax OCR System — Database & Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 13px; color: #1a1a2e; background: #f8f9fa; }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 22px; font-weight: 700; color: #0f3460; border-bottom: 3px solid #e94560; padding-bottom: 10px; margin-bottom: 24px; }
+  h2 { font-size: 16px; font-weight: 700; color: #16213e; margin: 28px 0 12px; border-left: 4px solid #e94560; padding-left: 10px; }
+  h3 { font-size: 13px; font-weight: 600; color: #0f3460; margin: 18px 0 6px; }
+
+  /* ---------- SECTION GRID ---------- */
+  .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width:800px){ .section-grid { grid-template-columns:1fr; } }
+
+  .card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 14px; break-inside: avoid; }
+  .card-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+    color: #fff; background: #0f3460; border-radius: 5px 5px 0 0;
+    margin: -14px -14px 10px; padding: 7px 14px;
+  }
+  .card-title.green  { background: #1e6e40; }
+  .card-title.purple { background: #5a3e8a; }
+  .card-title.teal   { background: #1a6e6e; }
+  .card-title.orange { background: #8a4e1a; }
+  .card-title.red    { background: #8a1a2e; }
+
+  /* ---------- TABLE ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { background: #f1f3f5; font-weight: 600; color: #343a40; padding: 5px 8px; text-align: left; border-bottom: 2px solid #dee2e6; }
+  tbody td { padding: 4px 8px; border-bottom: 1px solid #f1f3f5; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .col-name { font-family: 'Courier New', monospace; color: #0f3460; font-weight: 600; white-space: nowrap; }
+  .col-type { font-family: 'Courier New', monospace; color: #5a3e8a; font-size: 11px; }
+  .col-desc { color: #555; font-size: 11px; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+  .badge-pk  { background: #fff3cd; color: #856404; }
+  .badge-fk  { background: #d1ecf1; color: #0c5460; }
+  .badge-nn  { background: #f8d7da; color: #721c24; }
+
+  /* ---------- FLOW ---------- */
+  .flow-section { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-top: 24px; }
+  .mermaid { font-size: 12px; }
+  .flow-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+
+  /* ---------- PRINT ---------- */
+  @media print {
+    body { background: #fff; font-size: 11px; }
+    .page { padding: 16px; max-width: 100%; }
+    .section-grid { grid-template-columns: 1fr 1fr; }
+    .flow-section { page-break-before: always; }
+    h2 { margin-top: 16px; }
+  }
+
+  .print-btn {
+    position: fixed; top: 16px; right: 16px;
+    background: #e94560; color: #fff; border: none; border-radius: 6px;
+    padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  }
+  .print-btn:hover { background: #c73652; }
+  @media print { .print-btn { display: none; } }
+
+  .tag { font-size: 10px; font-family: monospace; background: #e9ecef; color: #495057; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+
+<div class="page">
+  <h1>Tax OCR System — Database Schema &amp; System Flow</h1>
+
+  <!-- ============ DATABASE SCHEMA ============ -->
+  <h2>Database Schema</h2>
+
+  <div class="section-grid">
+
+    <!-- CORE -->
+    <div class="card">
+      <div class="card-title">Core / Auth</div>
+
+      <h3>tenants</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">VARCHAR(255)</td><td class="col-desc">ชื่อบริษัท</td></tr>
+        <tr><td class="col-name">tax_id</td><td class="col-type">VARCHAR(13)</td><td class="col-desc">เลขผู้เสียภาษี UNIQUE</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">active / inactive</td></tr>
+        <tr><td class="col-name">created_at, updated_at</td><td class="col-type">TIMESTAMPTZ</td><td class="col-desc"></td></tr>
+      </tbody></table>
+
+      <h3>branches</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> tenants</td></tr>
+        <tr><td class="col-name">name, code</td><td class="col-type">VARCHAR</td><td class="col-desc">UNIQUE(tenant_id, code)</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">active / inactive</td></tr>
+      </tbody></table>
+
+      <h3>users</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> tenants</td></tr>
+        <tr><td class="col-name">name, email, phone</td><td class="col-type">VARCHAR</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">line_user_id</td><td class="col-type">VARCHAR(100)</td><td class="col-desc">LINE User ID</td></tr>
+        <tr><td class="col-name">role</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">admin / staff</td></tr>
+        <tr><td class="col-name">password_hash</td><td class="col-type">VARCHAR(255)</td><td class="col-desc">bcrypt</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">active / inactive</td></tr>
+      </tbody></table>
+
+      <h3>user_branches</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">user_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> users</td></tr>
+        <tr><td class="col-name">branch_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> branches</td></tr>
+      </tbody></table>
+    </div>
+
+    <!-- DOCUMENTS & INVOICES -->
+    <div class="card">
+      <div class="card-title green">Documents &amp; Invoices</div>
+
+      <h3>document_imports</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id, branch_id, user_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">source_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">camera/upload/zip/gdrive/onedrive</td></tr>
+        <tr><td class="col-name">total_files, processed_files</td><td class="col-type">INT</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">pending/processing/done/failed</td></tr>
+      </tbody></table>
+
+      <h3>invoices</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id, branch_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">document_import_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> nullable</td></tr>
+        <tr><td class="col-name">file_path, file_hash</td><td class="col-type">TEXT/VARCHAR(64)</td><td class="col-desc">MinIO path + SHA-256</td></tr>
+        <tr><td class="col-name">invoice_no</td><td class="col-type">SERIAL</td><td class="col-desc">running number</td></tr>
+        <tr><td class="col-name">invoice_doc_no, invoice_date</td><td class="col-type">TEXT</td><td class="col-desc">จากใบกำกับจริง</td></tr>
+        <tr><td class="col-name">doc_type</td><td class="col-type">VARCHAR(50)</td><td class="col-desc">tax_invoice / receipt</td></tr>
+        <tr><td class="col-name">vat_inclusive</td><td class="col-type">BOOLEAN</td><td class="col-desc">ราคารวม VAT แล้ว?</td></tr>
+        <tr><td class="col-name">vat_rate</td><td class="col-type">DECIMAL(5,2)</td><td class="col-desc">default 7.00</td></tr>
+        <tr><td class="col-name">vendor_name, vendor_tax_id</td><td class="col-type">VARCHAR</td><td class="col-desc">ข้อมูลผู้ขาย</td></tr>
+        <tr><td class="col-name">vendor_address, vendor_branch_code</td><td class="col-type">TEXT/VARCHAR</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">buyer_name, buyer_tax_id</td><td class="col-type">VARCHAR</td><td class="col-desc">ข้อมูลผู้ซื้อ</td></tr>
+        <tr><td class="col-name">buyer_address, buyer_branch_code</td><td class="col-type">TEXT/VARCHAR</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">total_before_vat</td><td class="col-type">NUMERIC(15,2)</td><td class="col-desc">ยอดก่อน VAT</td></tr>
+        <tr><td class="col-name">vat_amount</td><td class="col-type">NUMERIC(15,2)</td><td class="col-desc">ยอด VAT</td></tr>
+        <tr><td class="col-name">total_amount</td><td class="col-type">NUMERIC(15,2)</td><td class="col-desc">ยอดรวม</td></tr>
+        <tr><td class="col-name">vat_exempt_amount</td><td class="col-type">DECIMAL(15,2)</td><td class="col-desc">ยอดยกเว้น VAT</td></tr>
+        <tr><td class="col-name">vat_inclusive_subtotal</td><td class="col-type">DECIMAL(15,2)</td><td class="col-desc">มูลค่าที่มีภาษี</td></tr>
+        <tr><td class="col-name">discount_amount</td><td class="col-type">DECIMAL(15,2)</td><td class="col-desc">ส่วนลด</td></tr>
+        <tr><td class="col-name">vat_math_ok</td><td class="col-type">BOOLEAN</td><td class="col-desc">คำนวณ VAT ถูกต้อง</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">pending/verified/conflict</td></tr>
+        <tr><td class="col-name">verified_by, verified_at</td><td class="col-type">UUID/TIMESTAMPTZ</td><td class="col-desc">ผู้ verify</td></tr>
+        <tr><td class="col-name">invoice_year, invoice_month, invoice_day</td><td class="col-type">INT</td><td class="col-desc">วันที่บนเอกสาร (CE year, parsed จาก OCR)</td></tr>
+        <tr><td class="col-name">accounting_year, accounting_month</td><td class="col-type">INT</td><td class="col-desc">รอบบัญชีภาษี (ภพ.30) ที่เอกสารนี้จะถูกเคลม — default เดือนที่อัปโหลด</td></tr>
+        <tr><td class="col-name">duplicate_of</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> invoices nullable — ชี้ไปยังใบต้นฉบับถ้าซ้ำ</td></tr>
+      </tbody></table>
+
+      <h3>invoice_items</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">invoice_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> invoices CASCADE</td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">TEXT</td><td class="col-desc">ชื่อรายการ</td></tr>
+        <tr><td class="col-name">product_code, unit</td><td class="col-type">VARCHAR</td><td class="col-desc">รหัสสินค้า, หน่วย</td></tr>
+        <tr><td class="col-name">quantity</td><td class="col-type">NUMERIC(15,4)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">unit_price, discount, total_price</td><td class="col-type">NUMERIC(15,2)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">asset_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">asset / expense / pending</td></tr>
+        <tr><td class="col-name">classified_by</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">rule / ai / human</td></tr>
+      </tbody></table>
+    </div>
+
+    <!-- CLASSIFICATION & HITL -->
+    <div class="card">
+      <div class="card-title purple">Classification &amp; HITL</div>
+
+      <h3>classification_rules</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">keyword</td><td class="col-type">VARCHAR(255)</td><td class="col-desc">UNIQUE per tenant</td></tr>
+        <tr><td class="col-name">asset_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">asset / expense</td></tr>
+        <tr><td class="col-name">source</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">ai / human</td></tr>
+        <tr><td class="col-name">confidence</td><td class="col-type">NUMERIC(5,4)</td><td class="col-desc">0.0 – 1.0</td></tr>
+      </tbody></table>
+
+      <h3>hitl_queue</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">invoice_item_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> invoice_items</td></tr>
+        <tr><td class="col-name">reason</td><td class="col-type">TEXT</td><td class="col-desc">classification_needed / ocr_mismatch</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">pending / resolved</td></tr>
+        <tr><td class="col-name">resolved_by</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> users nullable</td></tr>
+      </tbody></table>
+
+      <h3>ocr_config</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">provider</td><td class="col-type">VARCHAR(50)</td><td class="col-desc">openai / gcv UNIQUE</td></tr>
+        <tr><td class="col-name">api_key</td><td class="col-type">TEXT</td><td class="col-desc">encrypted at rest</td></tr>
+        <tr><td class="col-name">enabled</td><td class="col-type">BOOLEAN</td><td class="col-desc"></td></tr>
+      </tbody></table>
+    </div>
+
+    <!-- REVIEWER & REWARD -->
+    <div class="card">
+      <div class="card-title orange">Reviewer &amp; Reward</div>
+
+      <h3>reviewers</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">VARCHAR(255)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">line_user_id</td><td class="col-type">VARCHAR(100)</td><td class="col-desc">UNIQUE</td></tr>
+        <tr><td class="col-name">reviewer_type</td><td class="col-type">VARCHAR(30)</td><td class="col-desc">text_verifier / classification_verifier</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">active / inactive</td></tr>
+        <tr><td class="col-name">total_earned, pending_payout</td><td class="col-type">NUMERIC(12,2)</td><td class="col-desc">ยอดสะสม</td></tr>
+      </tbody></table>
+
+      <h3>reviewer_tasks</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">hitl_queue_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">reviewer_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">task_type</td><td class="col-type">VARCHAR(30)</td><td class="col-desc">text_verification / classification_verification</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">sent/accepted/completed/expired</td></tr>
+        <tr><td class="col-name">reward_amount</td><td class="col-type">NUMERIC(10,2)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">sent_at, accepted_at, completed_at, expired_at</td><td class="col-type">TIMESTAMPTZ</td><td class="col-desc"></td></tr>
+      </tbody></table>
+
+      <h3>reviewer_payouts</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">reviewer_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">amount</td><td class="col-type">NUMERIC(12,2)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">method</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">promptpay / bank</td></tr>
+        <tr><td class="col-name">account_number</td><td class="col-type">VARCHAR(20)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">pending / paid</td></tr>
+      </tbody></table>
+
+      <h3>reward_config</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">task_type</td><td class="col-type">VARCHAR(30)</td><td class="col-desc">UNIQUE</td></tr>
+        <tr><td class="col-name">amount</td><td class="col-type">NUMERIC(10,2)</td><td class="col-desc">text=5฿, classify=3฿</td></tr>
+        <tr><td class="col-name">currency</td><td class="col-type">VARCHAR(3)</td><td class="col-desc">THB</td></tr>
+      </tbody></table>
+    </div>
+
+    <!-- STORAGE & ARCHIVE -->
+    <div class="card">
+      <div class="card-title teal">Storage &amp; Archive</div>
+
+      <h3>tenant_storage_config</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> UNIQUE</td></tr>
+        <tr><td class="col-name">storage_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">gdrive / onedrive / both</td></tr>
+        <tr><td class="col-name">gdrive_folder_id, gdrive_folder_url</td><td class="col-type">TEXT</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">onedrive_folder_id, onedrive_folder_url</td><td class="col-type">TEXT</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">owned_by</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">tenant / us</td></tr>
+        <tr><td class="col-name">billing_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">included / charged</td></tr>
+        <tr><td class="col-name">monthly_fee</td><td class="col-type">NUMERIC(10,2)</td><td class="col-desc"></td></tr>
+      </tbody></table>
+
+      <h3>archive_policies</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> UNIQUE</td></tr>
+        <tr><td class="col-name">active_days</td><td class="col-type">INT</td><td class="col-desc">default 90</td></tr>
+        <tr><td class="col-name">archive_days</td><td class="col-type">INT</td><td class="col-desc">default 365</td></tr>
+      </tbody></table>
+
+      <h3>archive_logs</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">tenant_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">entity_type</td><td class="col-type">VARCHAR(50)</td><td class="col-desc">invoice / document_import</td></tr>
+        <tr><td class="col-name">entity_id</td><td class="col-type">UUID</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">archive_path</td><td class="col-type">TEXT</td><td class="col-desc">MinIO cold path</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">archived / restored</td></tr>
+      </tbody></table>
+    </div>
+
+    <!-- CONVERSATION & AUDIT -->
+    <div class="card">
+      <div class="card-title red">Conversation, LINE &amp; Audit</div>
+
+      <h3>conversations</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-pk">PK</span></td></tr>
+        <tr><td class="col-name">tenant_id, branch_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">user_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> nullable</td></tr>
+        <tr><td class="col-name">channel</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">line_oa / liff</td></tr>
+        <tr><td class="col-name">line_user_id</td><td class="col-type">VARCHAR(100)</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">open / closed</td></tr>
+      </tbody></table>
+
+      <h3>messages</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">conversation_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span> CASCADE</td></tr>
+        <tr><td class="col-name">sender_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">customer / admin / bot</td></tr>
+        <tr><td class="col-name">message_type</td><td class="col-type">VARCHAR(20)</td><td class="col-desc">text / image / file / sticker</td></tr>
+        <tr><td class="col-name">content</td><td class="col-type">TEXT</td><td class="col-desc"></td></tr>
+        <tr><td class="col-name">metadata</td><td class="col-type">JSONB</td><td class="col-desc">LINE message ID etc.</td></tr>
+      </tbody></table>
+
+      <h3>audit_logs</h3>
+      <table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody>
+        <tr><td class="col-name">tenant_id, branch_id, user_id</td><td class="col-type">UUID</td><td class="col-desc"><span class="badge badge-fk">FK</span></td></tr>
+        <tr><td class="col-name">action</td><td class="col-type">VARCHAR(50)</td><td class="col-desc">login/upload/submit/delete</td></tr>
+        <tr><td class="col-name">entity_type</td><td class="col-type">VARCHAR(50)</td><td class="col-desc">invoice / document_import …</td></tr>
+        <tr><td class="col-name">entity_id</td><td class="col-type">UUID</td><td class="col-desc">FK ไปยัง record ที่เกี่ยวข้อง</td></tr>
+        <tr><td class="col-name">metadata</td><td class="col-type">JSONB</td><td class="col-desc">รายละเอียดเพิ่มเติม</td></tr>
+        <tr><td class="col-name">ip_address, device_info</td><td class="col-type">VARCHAR/TEXT</td><td class="col-desc"></td></tr>
+      </tbody></table>
+    </div>
+
+  </div><!-- /section-grid -->
+
+
+  <!-- ============ SYSTEM FLOW ============ -->
+  <h2 style="page-break-before:always">System Flow</h2>
+
+  <div class="flow-section">
+    <div class="mermaid">
+flowchart TD
+    A["👤 ลูกค้า\nLIFF: camera / upload / zip / gdrive"] --> B
+
+    subgraph API ["🌐 API Layer"]
+      B["POST /documents/upload\n(document_handler.go)"]
+      B --> B1["SSRF guard validateURL\n+ ตรวจ content-type"]
+      B1 --> C["บันทึกไฟล์ → MinIO\n(storage.Upload)"]
+      C --> D["สร้าง document_import + invoice\nstatus = pending"]
+      D --> E["Enqueue\nAsynq: TypeProcessInvoice"]
+    end
+
+    E --> F
+
+    subgraph WORKER ["⚙️ Background Worker (Asynq + Redis)"]
+      F["Worker รับงาน\ndownload file จาก MinIO"]
+      F --> G
+
+      subgraph OCR ["🔍 Dual-Engine OCR (Sequential)"]
+        G["1. Vision API\nextractText → Thai raw text\nclassifyFromText → doc_type, vat_inclusive"]
+        G --> H["2. GPT-4o-mini\nรับ raw text + VISION HINT\nextract ทุก field"]
+      end
+
+      H --> I["crossVerify\nเปรียบ: vendor_tax_id\ntotal_before_vat, vat, total"]
+      I --> J{"matched?"}
+      J -- "✅ ตรง" --> K["status = verified"]
+      J -- "❌ ไม่ตรง" --> L["status = conflict"]
+      K & L --> M["UpdateInvoiceData\n→ PostgreSQL"]
+    end
+
+    M --> N
+
+    subgraph CLASSIFY ["🏷️ Hybrid Classification (ทุก Line Item)"]
+      N["วนแต่ละ line item"]
+      N --> O1["1. DB Rules\n(tenant keyword match)"]
+      O1 -- match --> P["classified_by = rule ✅"]
+      O1 -- "no match" --> O2["2. Hardcoded Keywords"]
+      O2 -- match --> P
+      O2 -- "no match" --> O3["3. GPT classify\nconfidence?"]
+      O3 -- "≥ 0.8" --> Q["classified_by = ai ✅\n+ สร้าง Rule ใหม่\n(self-learning)"]
+      O3 -- "< 0.8" --> R["asset_type = pending"]
+    end
+
+    P & Q & R --> S["CreateInvoiceItem\n→ PostgreSQL"]
+    S --> T{"ต้อง HITL?"}
+    T -- "pending\nหรือ ocr_mismatch" --> U["CreateHitlItem\nhitl_queue"]
+    T -- ไม่ --> V
+    U --> U1["assignForHitl\nRound-robin → LINE Push\nส่งให้ reviewer"]
+    U1 --> V["UpdateDocumentImport\nstatus = done"]
+    V --> W["LINE Push แจ้งลูกค้า"]
+
+    subgraph RESULT ["📬 ผลลัพธ์"]
+      W --> X1["✅ verified\nยอดรวม N บาท\nรายการ N รายการ"]
+      W --> X2["⚠️ conflict\nทีมงานจะตรวจสอบเพิ่มเติม"]
+    end
+
+    subgraph REVIEWER ["👥 Reviewer Flow"]
+      U1 --> R1["Reviewer รับ LINE\ntext_verifier / classification_verifier"]
+      R1 --> R2["ตรวจสอบ + ส่งคำตอบ"]
+      R2 --> R3["บันทึกผล\n+ สะสม reward"]
+      R3 --> R4["ถ้าไม่รับใน X นาที\n→ ส่งคนถัดไป"]
+    end
+
+    style OCR fill:#e8f5e9,stroke:#2e7d32
+    style CLASSIFY fill:#e3f2fd,stroke:#1565c0
+    style REVIEWER fill:#fce4ec,stroke:#880e4f
+    style RESULT fill:#f3e5f5,stroke:#4a148c
+    style API fill:#fff8e1,stroke:#f57f17
+    style WORKER fill:#e0f2f1,stroke:#00695c
+    </div>
+
+    <div class="flow-legend">
+      <strong>Legend:</strong>
+      <span class="legend-item"><span class="legend-dot" style="background:#e8f5e9;border:1px solid #2e7d32"></span> OCR Engine</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#e3f2fd;border:1px solid #1565c0"></span> Classification</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#fce4ec;border:1px solid #880e4f"></span> Reviewer</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#f3e5f5;border:1px solid #4a148c"></span> Result</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#fff8e1;border:1px solid #f57f17"></span> API Layer</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#e0f2f1;border:1px solid #00695c"></span> Worker</span>
+    </div>
+  </div>
+
+  <p style="margin-top:24px;font-size:11px;color:#888;text-align:right">Tax OCR System — Generated June 2026</p>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { curve: 'basis', htmlLabels: true } });
+</script>
+</body>
+</html>

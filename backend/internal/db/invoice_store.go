@@ -18,6 +18,10 @@ const invoiceCols = `id, tenant_id, branch_id, COALESCE(document_import_id::text
 	COALESCE(vat_exempt_amount,0), COALESCE(vat_inclusive_subtotal,0), COALESCE(discount_amount,0),
 	total_before_vat, vat_amount, total_amount, vat_math_ok, status,
 	COALESCE(verified_by::text,''), verified_at,
+	COALESCE(invoice_year,0), COALESCE(invoice_month,0), COALESCE(invoice_day,0), COALESCE(duplicate_of::text,''),
+	COALESCE(accounting_year, EXTRACT(YEAR FROM created_at)::int),
+	COALESCE(accounting_month, EXTRACT(MONTH FROM created_at)::int),
+	COALESCE(vendor_id::text,''),
 	created_at, updated_at`
 
 func scanInvoice(scan func(dest ...any) error, inv *Invoice) error {
@@ -31,11 +35,14 @@ func scanInvoice(scan func(dest ...any) error, inv *Invoice) error {
 		&inv.VatExemptAmount, &inv.VatInclusiveSubtotal, &inv.DiscountAmount,
 		&inv.TotalBeforeVat, &inv.VatAmount, &inv.TotalAmount, &inv.VatMathOK, &inv.Status,
 		&inv.VerifiedBy, &inv.VerifiedAt,
+		&inv.InvoiceYear, &inv.InvoiceMonth, &inv.InvoiceDay, &inv.DuplicateOf,
+		&inv.AccountingYear, &inv.AccountingMonth,
+		&inv.VendorID,
 		&inv.CreatedAt, &inv.UpdatedAt,
 	)
 }
 
-func (s *Store) ListInvoices(ctx context.Context, tenantID, status string) ([]Invoice, error) {
+func (s *Store) ListInvoices(ctx context.Context, tenantID, status, docType string, acctYear, acctMonth int) ([]Invoice, error) {
 	query := `SELECT ` + invoiceCols + ` FROM invoices WHERE 1=1`
 	args := []any{}
 	i := 1
@@ -47,8 +54,25 @@ func (s *Store) ListInvoices(ctx context.Context, tenantID, status string) ([]In
 	if status != "" {
 		query += ` AND status = $` + strconv.Itoa(i)
 		args = append(args, status)
+		i++
 	}
-	query += " ORDER BY created_at DESC"
+	if docType != "" {
+		query += ` AND COALESCE(doc_type,'tax_invoice') = $` + strconv.Itoa(i)
+		args = append(args, docType)
+		i++
+	}
+	if acctYear > 0 {
+		query += ` AND COALESCE(accounting_year, EXTRACT(YEAR FROM created_at)::int) = $` + strconv.Itoa(i)
+		args = append(args, acctYear)
+		i++
+	}
+	if acctMonth > 0 {
+		query += ` AND COALESCE(accounting_month, EXTRACT(MONTH FROM created_at)::int) = $` + strconv.Itoa(i)
+		args = append(args, acctMonth)
+		i++
+	}
+	_ = i
+	query += " ORDER BY accounting_year DESC NULLS LAST, accounting_month DESC NULLS LAST, created_at DESC"
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -92,8 +116,10 @@ func (s *Store) CreateInvoice(ctx context.Context, input Invoice) (Invoice, erro
 				buyer_name, buyer_tax_id, buyer_address, buyer_branch_code,
 				invoice_doc_no, invoice_date,
 				vat_exempt_amount, vat_inclusive_subtotal, discount_amount,
-				total_before_vat, vat_amount, total_amount, vat_math_ok)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+				total_before_vat, vat_amount, total_amount, vat_math_ok,
+				accounting_year, accounting_month)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+			         EXTRACT(YEAR FROM NOW())::int, EXTRACT(MONTH FROM NOW())::int)
 			 RETURNING `+invoiceCols,
 			input.TenantID, input.BranchID, nullIfEmpty(input.DocumentImportID), input.FilePath, input.FileHash,
 			nullIfEmpty(input.DocType), input.VatInclusive, input.VatRate,
@@ -105,6 +131,24 @@ func (s *Store) CreateInvoice(ctx context.Context, input Invoice) (Invoice, erro
 		).Scan,
 		&inv,
 	)
+	return inv, err
+}
+
+func (s *Store) UpdateAccountingPeriod(ctx context.Context, id string, year, month int) (Invoice, error) {
+	if year < 2000 || year > 2200 || month < 1 || month > 12 {
+		return Invoice{}, ErrInvalidInput
+	}
+	var inv Invoice
+	err := scanInvoice(
+		s.pool.QueryRow(ctx,
+			`UPDATE invoices SET accounting_year=$2, accounting_month=$3, updated_at=NOW()
+			 WHERE id=$1 RETURNING `+invoiceCols,
+			id, year, month).Scan,
+		&inv,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Invoice{}, ErrNotFound
+	}
 	return inv, err
 }
 
@@ -199,33 +243,46 @@ type InvoiceUpdate struct {
 	TotalAmount          float64
 	VATMathOK            bool
 	Status               string
+	// Date parts parsed from the document itself (CE year)
+	InvoiceYear  int
+	InvoiceMonth int
+	InvoiceDay   int
+	// Accounting period — which VAT return month this is claimed in
+	AccountingYear  int
+	AccountingMonth int
+	// Duplicate detection — set to existing invoice ID if this is a duplicate
+	DuplicateOf string
 }
 
 func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdate) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE invoices SET
-			doc_type              = CASE WHEN $2  != '' THEN $2  ELSE doc_type END,
-			vat_inclusive         = $3,
-			vat_rate              = CASE WHEN $4  != 0  THEN $4  ELSE vat_rate END,
-			vendor_name           = CASE WHEN $5  != '' THEN $5  ELSE vendor_name END,
-			vendor_tax_id         = CASE WHEN $6  != '' THEN $6  ELSE vendor_tax_id END,
-			vendor_address        = CASE WHEN $7  != '' THEN $7  ELSE vendor_address END,
-			vendor_branch_code    = CASE WHEN $8  != '' THEN $8  ELSE vendor_branch_code END,
-			buyer_name            = CASE WHEN $9  != '' THEN $9  ELSE buyer_name END,
-			buyer_tax_id          = CASE WHEN $10 != '' THEN $10 ELSE buyer_tax_id END,
-			buyer_address         = CASE WHEN $11 != '' THEN $11 ELSE buyer_address END,
-			buyer_branch_code     = CASE WHEN $12 != '' THEN $12 ELSE buyer_branch_code END,
-			invoice_doc_no        = CASE WHEN $13 != '' THEN $13 ELSE invoice_doc_no END,
-			invoice_date          = CASE WHEN $14 != '' THEN $14 ELSE invoice_date END,
-			vat_exempt_amount     = CASE WHEN $15 != 0  THEN $15 ELSE vat_exempt_amount END,
-			vat_inclusive_subtotal= CASE WHEN $16 != 0  THEN $16 ELSE vat_inclusive_subtotal END,
-			discount_amount       = CASE WHEN $17 != 0  THEN $17 ELSE discount_amount END,
-			total_before_vat      = $18,
-			vat_amount            = $19,
-			total_amount          = $20,
-			vat_math_ok           = $21,
-			status                = CASE WHEN $22 != '' THEN $22 ELSE status END,
-			updated_at            = NOW()
+			doc_type               = CASE WHEN $2  != '' THEN $2  ELSE doc_type END,
+			vat_inclusive          = $3,
+			vat_rate               = CASE WHEN $4  != 0  THEN $4  ELSE vat_rate END,
+			vendor_name            = CASE WHEN $5  != '' THEN $5  ELSE vendor_name END,
+			vendor_tax_id          = CASE WHEN $6  != '' THEN $6  ELSE vendor_tax_id END,
+			vendor_address         = CASE WHEN $7  != '' THEN $7  ELSE vendor_address END,
+			vendor_branch_code     = CASE WHEN $8  != '' THEN $8  ELSE vendor_branch_code END,
+			buyer_name             = CASE WHEN $9  != '' THEN $9  ELSE buyer_name END,
+			buyer_tax_id           = CASE WHEN $10 != '' THEN $10 ELSE buyer_tax_id END,
+			buyer_address          = CASE WHEN $11 != '' THEN $11 ELSE buyer_address END,
+			buyer_branch_code      = CASE WHEN $12 != '' THEN $12 ELSE buyer_branch_code END,
+			invoice_doc_no         = CASE WHEN $13 != '' THEN $13 ELSE invoice_doc_no END,
+			invoice_date           = CASE WHEN $14 != '' THEN $14 ELSE invoice_date END,
+			vat_exempt_amount      = CASE WHEN $15 != 0  THEN $15 ELSE vat_exempt_amount END,
+			vat_inclusive_subtotal = CASE WHEN $16 != 0  THEN $16 ELSE vat_inclusive_subtotal END,
+			discount_amount        = CASE WHEN $17 != 0  THEN $17 ELSE discount_amount END,
+			total_before_vat       = $18,
+			vat_amount             = $19,
+			total_amount           = $20,
+			vat_math_ok            = $21,
+			status                 = CASE WHEN $22 != '' THEN $22 ELSE status END,
+			invoice_year           = CASE WHEN $23 != 0 THEN $23 ELSE invoice_year END,
+			invoice_month          = CASE WHEN $24 != 0 THEN $24 ELSE invoice_month END,
+			invoice_day            = CASE WHEN $25 != 0 THEN $25 ELSE invoice_day END,
+			duplicate_of           = COALESCE($26::uuid, duplicate_of),
+			updated_at             = NOW()
 		 WHERE id = $1`,
 		id,
 		u.DocType, u.VatInclusive, u.VatRate,
@@ -233,8 +290,37 @@ func (s *Store) UpdateInvoiceData(ctx context.Context, id string, u InvoiceUpdat
 		u.BuyerName, u.BuyerTaxID, u.BuyerAddress, u.BuyerBranchCode,
 		u.InvoiceDocNo, u.InvoiceDate,
 		u.VatExemptAmount, u.VatInclusiveSubtotal, u.DiscountAmount,
-		u.TotalBeforeVAT, u.VATAmount, u.TotalAmount, u.VATMathOK, u.Status)
+		u.TotalBeforeVAT, u.VATAmount, u.TotalAmount, u.VATMathOK, u.Status,
+		u.InvoiceYear, u.InvoiceMonth, u.InvoiceDay, nullIfEmpty(u.DuplicateOf))
 	return err
+}
+
+// FindDuplicateInvoice returns an existing invoice with the same tenant+vendor+invoice_doc_no.
+// excludeID is the current invoice being processed (to avoid self-match).
+// Returns ErrNotFound when no duplicate exists.
+func (s *Store) FindDuplicateInvoice(ctx context.Context, tenantID, vendorTaxID, invoiceDocNo, excludeID string) (Invoice, error) {
+	if tenantID == "" || vendorTaxID == "" || invoiceDocNo == "" {
+		return Invoice{}, ErrNotFound
+	}
+	var inv Invoice
+	err := scanInvoice(
+		s.pool.QueryRow(ctx,
+			`SELECT `+invoiceCols+` FROM invoices
+			 WHERE tenant_id = $1
+			   AND vendor_tax_id = $2
+			   AND invoice_doc_no = $3
+			   AND id != $4
+			   AND duplicate_of IS NULL
+			 ORDER BY created_at ASC
+			 LIMIT 1`,
+			tenantID, vendorTaxID, invoiceDocNo, excludeID,
+		).Scan,
+		&inv,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Invoice{}, ErrNotFound
+	}
+	return inv, err
 }
 
 // itemCols is the common SELECT column list for invoice_items.

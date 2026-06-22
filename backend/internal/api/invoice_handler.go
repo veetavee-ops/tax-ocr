@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 
 	"tax-ocr/backend/internal/db"
 	"tax-ocr/backend/internal/queue"
@@ -15,12 +16,33 @@ import (
 func (s *server) listInvoices(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	status := r.URL.Query().Get("status")
-	items, err := s.store.ListInvoices(r.Context(), tenantID, status)
+	docType := r.URL.Query().Get("doc_type")
+	acctYear, _ := strconv.Atoi(r.URL.Query().Get("accounting_year"))
+	acctMonth, _ := strconv.Atoi(r.URL.Query().Get("accounting_month"))
+	items, err := s.store.ListInvoices(r.Context(), tenantID, status, docType, acctYear, acctMonth)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": items})
+}
+
+func (s *server) updateAccountingPeriod(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		AccountingYear  int `json:"accounting_year"`
+		AccountingMonth int `json:"accounting_month"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	inv, err := s.store.UpdateAccountingPeriod(r.Context(), id, body.AccountingYear, body.AccountingMonth)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": inv})
 }
 
 func (s *server) getInvoice(w http.ResponseWriter, r *http.Request) {

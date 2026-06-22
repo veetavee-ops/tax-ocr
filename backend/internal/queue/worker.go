@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -66,6 +69,63 @@ func (w *Worker) Shutdown() {
 	w.server.Shutdown()
 }
 
+// parseInvoiceDate parses Thai/CE date strings from OCR output.
+// Returns year (CE), month (1-12), day (1-31); returns 0,0,0 when unparseable.
+// Buddhist Era (BE >= 2400) is converted to CE by subtracting 543.
+func parseInvoiceDate(s string) (year, month, day int) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return
+	}
+
+	// DD/MM/YYYY  or  D/M/YYYY  (separator: / - .)
+	re1 := regexp.MustCompile(`(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})`)
+	if m := re1.FindStringSubmatch(s); m != nil {
+		day, _ = strconv.Atoi(m[1])
+		month, _ = strconv.Atoi(m[2])
+		year, _ = strconv.Atoi(m[3])
+		if year >= 2400 {
+			year -= 543
+		}
+		return
+	}
+
+	// YYYY-MM-DD  or  YYYY/MM/DD
+	re2 := regexp.MustCompile(`(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})`)
+	if m := re2.FindStringSubmatch(s); m != nil {
+		year, _ = strconv.Atoi(m[1])
+		month, _ = strconv.Atoi(m[2])
+		day, _ = strconv.Atoi(m[3])
+		if year >= 2400 {
+			year -= 543
+		}
+		return
+	}
+
+	// Thai long form: "31 ธันวาคม 2568" or "31 ธ.ค. 2568"
+	thaiMonths := map[string]int{
+		"มกราคม": 1, "กุมภาพันธ์": 2, "มีนาคม": 3, "เมษายน": 4,
+		"พฤษภาคม": 5, "มิถุนายน": 6, "กรกฎาคม": 7, "สิงหาคม": 8,
+		"กันยายน": 9, "ตุลาคม": 10, "พฤศจิกายน": 11, "ธันวาคม": 12,
+		"ม.ค.": 1, "ก.พ.": 2, "มี.ค.": 3, "เม.ย.": 4,
+		"พ.ค.": 5, "มิ.ย.": 6, "ก.ค.": 7, "ส.ค.": 8,
+		"ก.ย.": 9, "ต.ค.": 10, "พ.ย.": 11, "ธ.ค.": 12,
+	}
+	re3 := regexp.MustCompile(`(\d{1,2})\s+(\S+)\s+(\d{4})`)
+	if m := re3.FindStringSubmatch(s); m != nil {
+		if mo, ok := thaiMonths[m[2]]; ok {
+			day, _ = strconv.Atoi(m[1])
+			month = mo
+			year, _ = strconv.Atoi(m[3])
+			if year >= 2400 {
+				year -= 543
+			}
+			return
+		}
+	}
+	return
+}
+
 func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error {
 	var p ProcessInvoicePayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
@@ -77,6 +137,7 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 	// Download file from MinIO
 	fileBytes, err := w.storage.Download(ctx, p.FilePath)
 	if err != nil {
+
 		log.Printf("[worker] download error for invoice %s: %v", p.InvoiceID, err)
 		_ = w.store.UpdateInvoiceData(ctx, p.InvoiceID, db.InvoiceUpdate{Status: "conflict"})
 		return fmt.Errorf("download: %w", err)
@@ -101,6 +162,39 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 	}
 
 	d := ocrResult.Data
+
+	// Parse invoice date into accounting period fields (CE year)
+	invYear, invMonth, invDay := parseInvoiceDate(d.InvoiceDate)
+	if invYear > 0 {
+		log.Printf("[worker] invoice %s date parsed: %04d-%02d-%02d", p.InvoiceID, invYear, invMonth, invDay)
+	}
+
+	// Duplicate invoice detection: same vendor + same invoice_doc_no within tenant is forbidden
+	duplicateOf := ""
+	if d.VendorTaxID != "" && d.InvoiceDocNo != "" {
+		existing, err := w.store.FindDuplicateInvoice(ctx, p.TenantID, d.VendorTaxID, d.InvoiceDocNo, p.InvoiceID)
+		if err == nil {
+			duplicateOf = existing.ID
+			invoiceStatus = "conflict"
+			log.Printf("[worker] invoice %s DUPLICATE of %s (vendor=%s doc_no=%s year=%04d month=%02d)",
+				p.InvoiceID, existing.ID, d.VendorTaxID, d.InvoiceDocNo, invYear, invMonth)
+		}
+	}
+
+	// Vendor registry lookup: upsert unverified vendor from OCR data, then link to invoice.
+	// If vendor already exists (verified or not), reuse existing record.
+	if d.VendorTaxID != "" {
+		vendor, err := w.store.UpsertVendorFromOCR(ctx, d.VendorTaxID, d.VendorName, d.VendorAddress, d.VendorBranchCode)
+		if err == nil {
+			_ = w.store.LinkInvoiceVendor(ctx, p.InvoiceID, vendor.ID)
+			if vendor.Verified {
+				log.Printf("[worker] invoice %s vendor %s verified (%s)", p.InvoiceID, vendor.TaxID, vendor.Name)
+			} else {
+				log.Printf("[worker] invoice %s vendor %s UNVERIFIED — awaiting confirmation", p.InvoiceID, vendor.TaxID)
+			}
+		}
+	}
+
 	_ = w.store.UpdateInvoiceData(ctx, p.InvoiceID, db.InvoiceUpdate{
 		DocType:              d.DocType,
 		VatInclusive:         d.VatInclusive,
@@ -115,6 +209,10 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 		BuyerBranchCode:      d.BuyerBranchCode,
 		InvoiceDocNo:         d.InvoiceDocNo,
 		InvoiceDate:          d.InvoiceDate,
+		InvoiceYear:          invYear,
+		InvoiceMonth:         invMonth,
+		InvoiceDay:           invDay,
+		DuplicateOf:          duplicateOf,
 		VatExemptAmount:      d.VatExemptAmount,
 		VatInclusiveSubtotal: d.VatInclusiveSubtotal,
 		DiscountAmount:       d.DiscountAmount,
@@ -128,6 +226,16 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 	// Clear old items before saving new ones (handles re-run OCR)
 	_ = w.store.DeleteInvoiceItemsByInvoiceID(ctx, p.InvoiceID)
 
+	// Skip item classification for duplicate invoices — they are flagged for admin review
+	if duplicateOf != "" {
+		if p.DocumentImportID != "" {
+			_ = w.store.UpdateDocumentImportStatus(ctx, p.DocumentImportID, "done")
+		}
+		go w.notifyLineUser(p, invoiceStatus, 0)
+		log.Printf("[worker] invoice %s skipped classification (duplicate)", p.InvoiceID)
+		return nil
+	}
+
 	// Classify and save each line item
 	for _, item := range ocrResult.Data.Items {
 		classResult, err := w.classifySvc.ClassifyWithDB(ctx, classify.ClassificationInput{
@@ -140,16 +248,16 @@ func (w *Worker) handleProcessInvoice(ctx context.Context, t *asynq.Task) error 
 		}
 
 		saved, err := w.store.CreateInvoiceItem(ctx, db.InvoiceItem{
-			TenantID:    p.TenantID,
-			BranchID:    p.BranchID,
-			InvoiceID:   p.InvoiceID,
-			ProductCode: item.ProductCode,
-			Description: item.Description,
-			Unit:        item.Unit,
-			Quantity:    item.Quantity,
-			UnitPrice:   item.UnitPrice,
-			Discount:    item.Discount,
-			TotalPrice:  item.TotalPrice,
+			TenantID:     p.TenantID,
+			BranchID:     p.BranchID,
+			InvoiceID:    p.InvoiceID,
+			ProductCode:  item.ProductCode,
+			Description:  item.Description,
+			Unit:         item.Unit,
+			Quantity:     item.Quantity,
+			UnitPrice:    item.UnitPrice,
+			Discount:     item.Discount,
+			TotalPrice:   item.TotalPrice,
 			AssetType:    classResult.AssetType,
 			ClassifiedBy: classResult.ClassifiedBy,
 		})

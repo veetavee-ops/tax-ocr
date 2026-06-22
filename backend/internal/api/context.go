@@ -14,3 +14,10 @@ func claimsFromContext(ctx context.Context) *Claims {
 	c, _ := ctx.Value(claimsKey).(*Claims)
 	return c
 }
+
+func userIDFromContext(ctx context.Context) string {
+	if c := claimsFromContext(ctx); c != nil {
+		return c.UserID
+	}
+	return ""
+}

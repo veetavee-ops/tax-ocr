@@ -16,6 +16,7 @@ import StorageConfig from './pages/StorageConfig'
 import Archive from './pages/Archive'
 import AuditLogs from './pages/AuditLogs'
 import Settings from './pages/Settings'
+import Vendors from './pages/Vendors'
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="users" element={<Users />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="invoices/:id" element={<InvoiceDetail />} />
+            <Route path="vendors" element={<Vendors />} />
             <Route path="hitl" element={<HitlQueue />} />
             <Route path="rules" element={<Rules />} />
             <Route path="conversations" element={<Conversations />} />

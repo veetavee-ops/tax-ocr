@@ -6,6 +6,7 @@ const links = [
   { to: '/branches',      label: 'Branches' },
   { to: '/users',         label: 'Users' },
   { to: '/invoices',      label: 'Invoices' },
+  { to: '/vendors',       label: 'ทะเบียนผู้ขาย' },
   { to: '/hitl',          label: 'HITL Queue' },
   { to: '/rules',         label: 'Rules' },
   { to: '/conversations', label: 'Conversations' },

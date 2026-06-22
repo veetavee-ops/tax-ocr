@@ -19,6 +19,7 @@ var (
 	ErrDuplicateTaxID      = errors.New("duplicate tax_id")
 	ErrDuplicateKeyword    = errors.New("duplicate keyword for tenant")
 	ErrDuplicateLineUserID = errors.New("duplicate line_user_id")
+	ErrDuplicateInvoice    = errors.New("duplicate invoice: same vendor and invoice number already exists")
 )
 
 type Tenant struct {
@@ -91,8 +92,19 @@ type Invoice struct {
 	BuyerAddress     string `json:"buyer_address,omitempty"`
 	BuyerBranchCode  string `json:"buyer_branch_code,omitempty"`
 	// Document reference
-	InvoiceDocNo string `json:"invoice_doc_no,omitempty"`
-	InvoiceDate  string `json:"invoice_date,omitempty"`
+	InvoiceDocNo  string `json:"invoice_doc_no,omitempty"`
+	InvoiceDate   string `json:"invoice_date,omitempty"`
+	// Parsed date parts from the document itself (CE year)
+	InvoiceYear  int `json:"invoice_year,omitempty"`
+	InvoiceMonth int `json:"invoice_month,omitempty"`
+	InvoiceDay   int `json:"invoice_day,omitempty"`
+	// Accounting period: which VAT return month this document is claimed in
+	AccountingYear  int `json:"accounting_year,omitempty"`
+	AccountingMonth int `json:"accounting_month,omitempty"`
+	// Vendor registry link (set after vendor lookup in worker)
+	VendorID string `json:"vendor_id,omitempty"`
+	// Duplicate detection
+	DuplicateOf string `json:"duplicate_of,omitempty"`
 	// Financial summary
 	VatExemptAmount      float64 `json:"vat_exempt_amount"`
 	VatInclusiveSubtotal float64 `json:"vat_inclusive_subtotal"`
@@ -103,6 +115,21 @@ type Invoice struct {
 	VatMathOK            bool    `json:"vat_math_ok"`
 	// Status
 	Status     string     `json:"status"`
+	VerifiedBy string     `json:"verified_by,omitempty"`
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type Vendor struct {
+	ID         string     `json:"id"`
+	TaxID      string     `json:"tax_id"`
+	Name       string     `json:"name,omitempty"`
+	Address    string     `json:"address,omitempty"`
+	BranchCode string     `json:"branch_code,omitempty"`
+	BranchName string     `json:"branch_name,omitempty"`
+	Phone      string     `json:"phone,omitempty"`
+	Verified   bool       `json:"verified"`
 	VerifiedBy string     `json:"verified_by,omitempty"`
 	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`

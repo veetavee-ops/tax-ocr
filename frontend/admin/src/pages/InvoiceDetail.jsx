@@ -2,8 +2,84 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import Table from '../components/Table'
+import Modal from '../components/Modal'
 import { Btn, StatusBadge } from '../components/ui'
 import VerificationWizard from './VerificationWizard'
+
+function VendorVerifyModal({ vendor, ocrName, ocrAddress, onClose }) {
+  const [form, setForm] = useState({
+    name:        vendor.name || ocrName || '',
+    address:     vendor.address || ocrAddress || '',
+    branch_code: vendor.branch_code || '',
+    branch_name: vendor.branch_name || '',
+    phone:       vendor.phone || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('กรุณาระบุชื่อผู้ขาย'); return }
+    setSaving(true); setError('')
+    try {
+      await api.post(`/vendors/${vendor.id}/verify`, form)
+      onClose(true)
+    } catch (err) {
+      setError(err.response?.data?.error || err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400'
+
+  return (
+    <Modal title="ยืนยันข้อมูลผู้ขาย" onClose={() => onClose(false)}>
+      <p className="text-xs text-gray-500 mb-1">
+        เลขผู้เสียภาษี <span className="font-mono font-semibold text-gray-800">{vendor.tax_id}</span>
+        {!vendor.verified && <span className="ml-2 text-amber-600">(ยังไม่ยืนยัน)</span>}
+      </p>
+      {!vendor.verified && (ocrName || ocrAddress) && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700 mb-3">
+          <p className="font-semibold mb-0.5">ข้อมูลที่ OCR อ่านได้จากเอกสาร:</p>
+          {ocrName && <p>ชื่อ: {ocrName}</p>}
+          {ocrAddress && <p>ที่อยู่: {ocrAddress}</p>}
+        </div>
+      )}
+      <form onSubmit={submit} className="space-y-3 mt-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อบริษัท/ร้านค้า <span className="text-red-500">*</span></label>
+          <input value={form.name} onChange={set('name')} className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">รหัสสาขา</label>
+            <input value={form.branch_code} onChange={set('branch_code')} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อสาขา</label>
+            <input value={form.branch_name} onChange={set('branch_name')} className={inputCls} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">เบอร์โทร</label>
+          <input value={form.phone} onChange={set('phone')} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ที่อยู่</label>
+          <textarea value={form.address} onChange={set('address')} rows={3} className={inputCls} />
+        </div>
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Btn variant="secondary" onClick={() => onClose(false)}>ยกเลิก</Btn>
+          <Btn type="submit" disabled={saving}>{saving ? 'กำลังบันทึก…' : '✓ ยืนยันและบันทึก'}</Btn>
+        </div>
+      </form>
+    </Modal>
+  )
+}
 
 /* ─────────────────────────────────────────────
    Shared interactive image core
@@ -222,6 +298,9 @@ export default function InvoiceDetail() {
   const [reprocessing, setReprocessing] = useState(false)
   const [showViewer, setShowViewer] = useState(false)
 
+  const [vendor, setVendor] = useState(null)
+  const [showVendorModal, setShowVendorModal] = useState(false)
+
   const loadInvoice = () => api.get(`/invoices/${id}`).then((r) => setInvoice(r.data.data))
   const loadItems   = () => api.get(`/invoices/${id}/items`).then((r) => setItems(r.data.data ?? []))
 
@@ -252,6 +331,12 @@ export default function InvoiceDetail() {
     if (!invoice?.tenant_id) return
     api.get(`/tenants/${invoice.tenant_id}`).then((r) => setTenant(r.data.data ?? r.data)).catch(() => {})
   }, [invoice?.tenant_id])
+
+  // Fetch vendor info when invoice loads
+  useEffect(() => {
+    if (!invoice?.vendor_id) return
+    api.get(`/vendors/${invoice.vendor_id}`).then((r) => setVendor(r.data.data)).catch(() => {})
+  }, [invoice?.vendor_id])
 
   // Auto-refresh while pending
   useEffect(() => {
@@ -502,9 +587,41 @@ export default function InvoiceDetail() {
             </div>
           </div>
 
+          {/* ── Vendor verification banner ── */}
+          {vendor && !vendor.verified && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3">
+              <span className="text-amber-500 text-xl">⚠️</span>
+              <div className="flex-1">
+                <p className="font-semibold text-amber-800 text-sm">ยังไม่ยืนยันข้อมูลผู้ขาย</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  เลขผู้เสียภาษี <span className="font-mono font-bold">{vendor.tax_id}</span> — ชื่อและที่อยู่ถูกอ่านจาก OCR อัตโนมัติ กรุณาตรวจสอบและยืนยันให้ถูกต้อง
+                </p>
+              </div>
+              <button
+                onClick={() => setShowVendorModal(true)}
+                className="shrink-0 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded">
+                ยืนยันข้อมูล
+              </button>
+            </div>
+          )}
+          {vendor && vendor.verified && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2 flex items-center gap-2 text-xs text-green-700">
+              <span>✅</span>
+              <span>ผู้ขายยืนยันแล้ว — <span className="font-semibold">{vendor.name}</span></span>
+            </div>
+          )}
+
           {/* ── Vendor ── */}
           <div className="bg-white rounded-lg shadow p-4 text-sm">
-            <CardTitle>ผู้ขาย (Vendor)</CardTitle>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">ผู้ขาย (Vendor)</h3>
+              {vendor && (
+                <button onClick={() => setShowVendorModal(true)}
+                  className="text-xs text-indigo-600 hover:underline">
+                  {vendor.verified ? 'ดู/แก้ไขข้อมูลในทะเบียน' : 'ยืนยันข้อมูลผู้ขาย'}
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <F label="ชื่อบริษัท/ร้านค้า" field="vendor_name" />
               <F label="เลขผู้เสียภาษี (13 หลัก)" field="vendor_tax_id" mono />
@@ -514,6 +631,21 @@ export default function InvoiceDetail() {
               </div>
             </div>
           </div>
+
+          {/* ── Vendor Verify Modal ── */}
+          {showVendorModal && vendor && (
+            <VendorVerifyModal
+              vendor={vendor}
+              ocrName={invoice.vendor_name}
+              ocrAddress={invoice.vendor_address}
+              onClose={(updated) => {
+                setShowVendorModal(false)
+                if (updated) {
+                  api.get(`/vendors/${vendor.id}`).then((r) => setVendor(r.data.data))
+                }
+              }}
+            />
+          )}
 
           {/* ── Buyer ── */}
           <div className="bg-white rounded-lg shadow p-4 text-sm">

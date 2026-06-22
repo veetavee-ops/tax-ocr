@@ -62,7 +62,13 @@ func NewRouter(store *db.Store, storage *storage.Client, queueClient *queue.Clie
 	p.HandleFunc("GET /api/v1/invoices/{id}/items", api.getInvoiceItems)
 	p.HandleFunc("POST /api/v1/invoices/{id}/verify", api.verifyInvoice)
 	p.HandleFunc("POST /api/v1/invoices/{id}/reprocess", api.reprocessInvoice)
+	p.HandleFunc("PUT /api/v1/invoices/{id}/accounting-period", api.updateAccountingPeriod)
 	p.HandleFunc("PUT /api/v1/invoice-items/{id}", api.updateInvoiceItem)
+
+	p.HandleFunc("GET /api/v1/vendors", api.listVendors)
+	p.HandleFunc("GET /api/v1/vendors/lookup", api.lookupVendorByTaxID)
+	p.HandleFunc("GET /api/v1/vendors/{id}", api.getVendor)
+	p.HandleFunc("POST /api/v1/vendors/{id}/verify", api.verifyVendor)
 
 	p.HandleFunc("GET /api/v1/rules", api.listRules)
 	p.HandleFunc("POST /api/v1/rules", api.createRule)
