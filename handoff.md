@@ -270,8 +270,12 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - [ ] GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification
 
 ### Phase ถัดไป
+- [ ] **e-Tax Invoice XML support** — ผู้ขายส่ง XML มาตรฐาน RD แทนรูป → parse XML → บันทึก invoice (ข้าม OCR), ต้องมีไฟล์ตัวอย่างจาก vendor ก่อน
+  - Signature validation ทำทีหลัง (ต้องใช้ cert RD)
+  - Export ภพ.30 XML → Phase ถัดไป
 - [ ] รายงานภาษีซื้อ (ม.87/1) — export PDF/Excel พร้อม header ที่อยู่
 - [ ] PDF OCR support (invoice — scanned PDF)
+- [ ] PDF company extract — digital PDF จาก DBD → Go PDF library extract text → GPT (ไม่ต้อง Vision)
 - [ ] Password reset flow
 - [ ] OneDrive API integration
 
