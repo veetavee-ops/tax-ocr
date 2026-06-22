@@ -67,7 +67,7 @@ export default function Users() {
       <Table columns={cols} data={data} onRowClick={openEdit} />
 
       {modal && (
-        <Modal title={modal === 'create' ? 'เพิ่ม User' : 'แก้ไข User'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'create' ? 'เพิ่ม User' : 'แก้ไข User'} devLabel={modal === 'create' ? 'P-03-M Create' : 'P-03-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit}>
             {modal === 'create' && <Select label="Tenant" name="tenant_id" value={form.tenant_id} onChange={onChange} options={tenantOpts} required />}
             <Input label="ชื่อ-นามสกุล" name="name" value={form.name} onChange={onChange} required />

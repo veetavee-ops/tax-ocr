@@ -93,7 +93,7 @@ export default function Rules() {
       <Table columns={cols} data={data} onRowClick={openEdit} />
 
       {modal && (
-        <Modal title={modal === 'create' ? 'เพิ่ม Rule' : 'แก้ไข Rule'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'create' ? 'เพิ่ม Rule' : 'แก้ไข Rule'} devLabel={modal === 'create' ? 'P-08-M Create' : 'P-08-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit}>
             {modal === 'create' && <Select label="Tenant" name="tenant_id" value={form.tenant_id} onChange={onChange} options={tenantOpts} required />}
             <Input label="Keyword" name="keyword" value={form.keyword} onChange={onChange} required />

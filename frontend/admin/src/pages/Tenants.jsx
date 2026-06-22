@@ -58,7 +58,7 @@ export default function Tenants() {
       <Table columns={cols} data={data} onRowClick={openEdit} />
 
       {modal && (
-        <Modal title={modal === 'create' ? 'เพิ่ม Tenant' : 'แก้ไข Tenant'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'create' ? 'เพิ่ม Tenant' : 'แก้ไข Tenant'} devLabel={modal === 'create' ? 'P-01-M Create' : 'P-01-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit} className="space-y-3">
             <Input label="ชื่อบริษัท" name="name" value={form.name} onChange={onChange} required />
             {modal === 'create' && (

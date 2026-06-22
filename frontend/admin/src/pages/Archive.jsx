@@ -68,7 +68,7 @@ export default function Archive() {
       {tab === 'archives' ? <Table columns={archiveCols} data={archives} /> : <Table columns={policyCols} data={policies} />}
 
       {modal && (
-        <Modal title="เพิ่ม Archive Policy" onClose={() => setModal(false)}>
+        <Modal title="เพิ่ม Archive Policy" devLabel="P-11-M Policy" onClose={() => setModal(false)}>
           <form onSubmit={submitPolicy}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>

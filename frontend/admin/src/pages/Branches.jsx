@@ -71,7 +71,7 @@ export default function Branches() {
       <Table columns={cols} data={data} onRowClick={openEdit} />
 
       {modal && (
-        <Modal title={modal === 'create' ? 'เพิ่ม Branch' : 'แก้ไข Branch'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'create' ? 'เพิ่ม Branch' : 'แก้ไข Branch'} devLabel={modal === 'create' ? 'P-02-M Create' : 'P-02-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit} className="space-y-3">
             {modal === 'create' && (
               <Select label="Tenant" name="tenant_id" value={form.tenant_id} onChange={onChange} options={tenantOpts} required />

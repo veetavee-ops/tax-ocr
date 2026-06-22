@@ -44,7 +44,7 @@ export default function Reviewers() {
       <Table columns={cols} data={data} onRowClick={openEdit} />
 
       {modal && (
-        <Modal title={modal === 'create' ? 'เพิ่ม Reviewer' : 'แก้ไข Reviewer'} onClose={() => setModal(null)}>
+        <Modal title={modal === 'create' ? 'เพิ่ม Reviewer' : 'แก้ไข Reviewer'} devLabel={modal === 'create' ? 'P-12R-M Create' : 'P-12R-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ <span className="text-red-500">*</span></label>

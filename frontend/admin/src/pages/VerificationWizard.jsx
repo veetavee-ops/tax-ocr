@@ -158,7 +158,10 @@ export default function VerificationWizard({ invoice, items, onVerified }) {
 
   return (
     <div className="bg-white rounded-lg shadow p-5 text-sm">
-      <h3 className="font-semibold text-gray-700 mb-5 border-b pb-3">ตรวจสอบความถูกต้อง</h3>
+      <div className="flex items-center justify-between mb-5 border-b pb-3">
+        <h3 className="font-semibold text-gray-700">ตรวจสอบความถูกต้อง</h3>
+        <span className="text-[10px] font-mono bg-black/70 text-white px-1.5 py-0.5 rounded select-none">P-05-W VerifyWizard</span>
+      </div>
 
       {/* ── Level 1: Line Items ── */}
       <section className="mb-6">

@@ -36,7 +36,7 @@ function VendorVerifyModal({ vendor, ocrName, ocrAddress, onClose }) {
   const inputCls = 'w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400'
 
   return (
-    <Modal title="ยืนยันข้อมูลผู้ขาย" onClose={() => onClose(false)}>
+    <Modal title="ยืนยันข้อมูลผู้ขาย" devLabel="P-05-M1 VendorVerify" onClose={() => onClose(false)}>
       <p className="text-xs text-gray-500 mb-1">
         เลขผู้เสียภาษี <span className="font-mono font-semibold text-gray-800">{vendor.tax_id}</span>
         {!vendor.verified && <span className="ml-2 text-amber-600">(ยังไม่ยืนยัน)</span>}
@@ -266,7 +266,10 @@ function ImageViewer({ url, isPdf, onClose }) {
         }}
       >
         <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600 }}>🖼 รูปต้นฉบับ — drag header เพื่อย้าย</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>✕</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', color: '#e2e8f0', padding: '2px 6px', borderRadius: 4 }}>P-05-M2 ImageViewer</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>✕</button>
+        </div>
       </div>
       <ImageInteractive url={url} isPdf={isPdf} height="calc(85vh - 60px)" onClose={onClose} />
     </div>

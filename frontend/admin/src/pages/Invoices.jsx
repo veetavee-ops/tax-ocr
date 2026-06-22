@@ -54,7 +54,7 @@ function UploadModal({ onClose }) {
   }
 
   return (
-    <Modal title="อัปโหลดใบกำกับภาษี" onClose={onClose}>
+    <Modal title="อัปโหลดใบกำกับภาษี" devLabel="P-04-M1 Upload" onClose={onClose}>
       <form onSubmit={submit}>
         {branches.length > 1 && (
           <Select
@@ -109,7 +109,7 @@ function PeriodModal({ invoice, onClose }) {
   }
 
   return (
-    <Modal title="เปลี่ยนรอบบัญชีภาษี" onClose={() => onClose(false)}>
+    <Modal title="เปลี่ยนรอบบัญชีภาษี" devLabel="P-04-M2 Period" onClose={() => onClose(false)}>
       <p className="text-sm text-gray-500 mb-4">
         เอกสาร #{invoice.invoice_no} — เลขที่ {invoice.invoice_doc_no || '–'}
       </p>

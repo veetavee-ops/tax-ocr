@@ -33,7 +33,7 @@ function VendorVerifyModal({ vendor, onClose }) {
   }
 
   return (
-    <Modal title={`ยืนยันผู้ขาย — ${vendor.tax_id}`} onClose={() => onClose(false)}>
+    <Modal title={`ยืนยันผู้ขาย — ${vendor.tax_id}`} devLabel="P-06-M1 VendorVerify" onClose={() => onClose(false)}>
       <form onSubmit={submit} className="space-y-3 mt-1">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อบริษัท/ร้านค้า <span className="text-red-500">*</span></label>
