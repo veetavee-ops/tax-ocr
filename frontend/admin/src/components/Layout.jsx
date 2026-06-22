@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import { useAuth } from '../context/AuthContext'
+import DevLabel from './DevLabel'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -24,6 +25,7 @@ export default function Layout() {
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>
+        <DevLabel />
       </div>
     </div>
   )
