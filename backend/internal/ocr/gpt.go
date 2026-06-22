@@ -201,32 +201,33 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-func (g *gptClient) sendRequest(ctx context.Context, body map[string]any) (InvoiceData, error) {
+// sendRawRequest sends a request to OpenAI and returns the raw content string.
+func (g *gptClient) sendRawRequest(ctx context.Context, body map[string]any) ([]byte, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return InvoiceData{}, err
+		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", gptEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return InvoiceData{}, err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+g.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := g.http.Do(req)
 	if err != nil {
-		return InvoiceData{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return InvoiceData{}, err
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return InvoiceData{}, fmt.Errorf("openai api %d: %s", resp.StatusCode, string(respBytes))
+		return nil, fmt.Errorf("openai api %d: %s", resp.StatusCode, string(respBytes))
 	}
 
 	var apiResp struct {
@@ -237,15 +238,22 @@ func (g *gptClient) sendRequest(ctx context.Context, body map[string]any) (Invoi
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBytes, &apiResp); err != nil {
-		return InvoiceData{}, err
+		return nil, err
 	}
 	if len(apiResp.Choices) == 0 {
-		return InvoiceData{}, fmt.Errorf("empty choices from openai")
+		return nil, fmt.Errorf("empty choices from openai")
 	}
 
-	content := strings.TrimSpace(apiResp.Choices[0].Message.Content)
+	return []byte(strings.TrimSpace(apiResp.Choices[0].Message.Content)), nil
+}
+
+func (g *gptClient) sendRequest(ctx context.Context, body map[string]any) (InvoiceData, error) {
+	content, err := g.sendRawRequest(ctx, body)
+	if err != nil {
+		return InvoiceData{}, err
+	}
 	var data InvoiceData
-	if err := json.Unmarshal([]byte(content), &data); err != nil {
+	if err := json.Unmarshal(content, &data); err != nil {
 		return InvoiceData{}, fmt.Errorf("parse gpt response: %w", err)
 	}
 	return data, nil

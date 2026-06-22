@@ -107,7 +107,7 @@ func (s *server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.CreateTenant(r.Context(), req.TenantName, req.TaxID, "")
+	tenant, err := s.store.CreateTenant(r.Context(), req.TenantName, req.TaxID, "", "")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

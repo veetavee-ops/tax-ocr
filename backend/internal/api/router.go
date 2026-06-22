@@ -116,6 +116,7 @@ func NewRouter(store *db.Store, storage *storage.Client, queueClient *queue.Clie
 	p.HandleFunc("GET /api/v1/ocr/config", api.listOCRConfig)
 	p.HandleFunc("PUT /api/v1/ocr/config/{provider}", api.updateOCRConfig)
 	p.HandleFunc("POST /api/v1/ocr/test", api.testOCR)
+	p.HandleFunc("POST /api/v1/ocr/extract-company", api.extractCompanyInfo)
 
 	p.HandleFunc("GET /api/v1/auth/me", api.me)
 	p.HandleFunc("POST /api/v1/auth/logout", api.logout)

@@ -114,6 +114,43 @@ func (s *server) testOCR(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": result})
 }
 
+// POST /api/v1/ocr/extract-company
+// Accepts a multipart file (image/PDF of company registration doc) and returns
+// extracted tenant + branch data for auto-filling the create form.
+func (s *server) extractCompanyInfo(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	defer file.Close()
+
+	if s.ocrSvc == nil || !s.ocrSvc.HasConfig() {
+		writeError(w, http.StatusServiceUnavailable, errOCRNotConfigured)
+		return
+	}
+
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	contentType := detectContentType(header.Filename)
+	result, err := s.ocrSvc.ExtractCompanyInfo(r.Context(), fileBytes, contentType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"data": result})
+}
+
 // reloadOCRService reads latest keys from DB and updates the live OCR service.
 func reloadOCRService(ctx context.Context, s *server) {
 	if s.ocrSvc == nil {
