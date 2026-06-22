@@ -98,13 +98,13 @@ export default function Tenants() {
             {/* OCR auto-fill — create mode only */}
             {modal === 'create' && (
               <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
-                <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleOCR} />
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={handleOCR} />
                 <button type="button" onClick={() => fileRef.current?.click()}
                   disabled={ocrLoading}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 transition-colors">
-                  {ocrLoading ? '⏳ กำลังอ่าน…' : '📄 อ่านเอกสาร (auto-fill)'}
+                  {ocrLoading ? '⏳ กำลังอ่าน…' : '📷 อ่านเอกสาร (auto-fill)'}
                 </button>
-                <span className="text-xs text-gray-400">รองรับ หนังสือรับรอง / ภพ.01 / ภพ.20</span>
+                <span className="text-xs text-gray-400">รองรับรูปภาพ JPG/PNG เท่านั้น (PDF ยังไม่รองรับ)</span>
               </div>
             )}
             {/* ID — read-only เฉพาะ edit, ไม่โชว์ตอน create */}
