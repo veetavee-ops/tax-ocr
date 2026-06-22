@@ -26,6 +26,7 @@ type Tenant struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`
 	TaxID        string    `json:"tax_id"`
+	Address      string    `json:"address,omitempty"`
 	Status       string    `json:"status"`
 	BusinessType string    `json:"business_type"` // trading / service / construction
 	CreatedAt    time.Time `json:"created_at"`
@@ -37,6 +38,8 @@ type Branch struct {
 	TenantID  string    `json:"tenant_id"`
 	Name      string    `json:"name"`
 	Code      string    `json:"code"`
+	Address   string    `json:"address,omitempty"`
+	Phone     string    `json:"phone,omitempty"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

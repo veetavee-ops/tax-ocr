@@ -193,6 +193,7 @@ func (s *server) getTenant(w http.ResponseWriter, r *http.Request) {
 func (s *server) updateTenant(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name         string `json:"name"`
+		Address      string `json:"address"`
 		Status       string `json:"status"`
 		BusinessType string `json:"business_type"`
 	}
@@ -202,7 +203,7 @@ func (s *server) updateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.UpdateTenant(r.Context(), r.PathValue("id"), req.Name, req.Status, req.BusinessType)
+	tenant, err := s.store.UpdateTenant(r.Context(), r.PathValue("id"), req.Name, req.Address, req.Status, req.BusinessType)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
@@ -223,8 +224,10 @@ func (s *server) listBranches(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createBranch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
-		Code string `json:"code"`
+		Name    string `json:"name"`
+		Code    string `json:"code"`
+		Address string `json:"address"`
+		Phone   string `json:"phone"`
 	}
 
 	if err := readJSON(r, &req); err != nil {
@@ -232,7 +235,7 @@ func (s *server) createBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	branch, err := s.store.CreateBranch(r.Context(), r.PathValue("id"), req.Name, req.Code)
+	branch, err := s.store.CreateBranch(r.Context(), r.PathValue("id"), req.Name, req.Code, req.Address, req.Phone)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, db.ErrInvalidTenant) {
@@ -247,8 +250,10 @@ func (s *server) createBranch(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) updateBranch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
+		Name    string `json:"name"`
+		Address string `json:"address"`
+		Phone   string `json:"phone"`
+		Status  string `json:"status"`
 	}
 
 	if err := readJSON(r, &req); err != nil {
@@ -256,7 +261,7 @@ func (s *server) updateBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	branch, err := s.store.UpdateBranch(r.Context(), r.PathValue("id"), r.PathValue("branchId"), req.Name, req.Status)
+	branch, err := s.store.UpdateBranch(r.Context(), r.PathValue("id"), r.PathValue("branchId"), req.Name, req.Address, req.Phone, req.Status)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return

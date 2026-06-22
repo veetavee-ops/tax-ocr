@@ -9,10 +9,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const tenantCols = `id, name, tax_id, status, COALESCE(business_type,'service'), created_at, updated_at`
+const tenantCols = `id, name, tax_id, COALESCE(address,''), status, COALESCE(business_type,'service'), created_at, updated_at`
 
 func scanTenant(scan func(dest ...any) error, t *Tenant) error {
-	return scan(&t.ID, &t.Name, &t.TaxID, &t.Status, &t.BusinessType, &t.CreatedAt, &t.UpdatedAt)
+	return scan(&t.ID, &t.Name, &t.TaxID, &t.Address, &t.Status, &t.BusinessType, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
@@ -42,11 +42,15 @@ func (s *Store) GetTenant(ctx context.Context, id string) (Tenant, error) {
 	return t, err
 }
 
+const branchCols = `id, tenant_id, name, code, COALESCE(address,''), COALESCE(phone,''), status, created_at, updated_at`
+
+func scanBranch(scan func(dest ...any) error, b *Branch) error {
+	return scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Address, &b.Phone, &b.Status, &b.CreatedAt, &b.UpdatedAt)
+}
+
 func (s *Store) GetBranch(ctx context.Context, id string) (Branch, error) {
 	var b Branch
-	err := s.pool.QueryRow(ctx,
-		`SELECT id, tenant_id, name, code, status, created_at, updated_at FROM branches WHERE id = $1`, id).
-		Scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Status, &b.CreatedAt, &b.UpdatedAt)
+	err := scanBranch(s.pool.QueryRow(ctx, `SELECT `+branchCols+` FROM branches WHERE id = $1`, id).Scan, &b)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Branch{}, ErrNotFound
 	}
@@ -65,6 +69,7 @@ func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType stri
 		`INSERT INTO tenants (name, tax_id, business_type) VALUES ($1, $2, $3)
 		 RETURNING `+tenantCols,
 		name, taxID, businessType).Scan, &t)
+
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -75,17 +80,18 @@ func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType stri
 	return t, nil
 }
 
-func (s *Store) UpdateTenant(ctx context.Context, id, name, status, businessType string) (Tenant, error) {
+func (s *Store) UpdateTenant(ctx context.Context, id, name, address, status, businessType string) (Tenant, error) {
 	var t Tenant
 	err := scanTenant(s.pool.QueryRow(ctx,
 		`UPDATE tenants SET
 			name          = COALESCE(NULLIF($2,''), name),
-			status        = COALESCE(NULLIF($3,''), status),
-			business_type = COALESCE(NULLIF($4,''), business_type),
+			address       = COALESCE(NULLIF($3,''), address),
+			status        = COALESCE(NULLIF($4,''), status),
+			business_type = COALESCE(NULLIF($5,''), business_type),
 			updated_at    = NOW()
 		 WHERE id = $1
 		 RETURNING `+tenantCols,
-		id, name, status, businessType).Scan, &t)
+		id, name, address, status, businessType).Scan, &t)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tenant{}, ErrNotFound
 	}
@@ -94,8 +100,7 @@ func (s *Store) UpdateTenant(ctx context.Context, id, name, status, businessType
 
 func (s *Store) ListBranchesByTenant(ctx context.Context, tenantID string) ([]Branch, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, tenant_id, name, code, status, created_at, updated_at
-		 FROM branches WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
+		`SELECT `+branchCols+` FROM branches WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +109,7 @@ func (s *Store) ListBranchesByTenant(ctx context.Context, tenantID string) ([]Br
 	var items []Branch
 	for rows.Next() {
 		var b Branch
-		if err := rows.Scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Status, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		if err := scanBranch(rows.Scan, &b); err != nil {
 			return nil, err
 		}
 		items = append(items, b)
@@ -112,16 +117,15 @@ func (s *Store) ListBranchesByTenant(ctx context.Context, tenantID string) ([]Br
 	return items, nil
 }
 
-func (s *Store) CreateBranch(ctx context.Context, tenantID, name, code string) (Branch, error) {
+func (s *Store) CreateBranch(ctx context.Context, tenantID, name, code, address, phone string) (Branch, error) {
 	if tenantID == "" || name == "" {
 		return Branch{}, ErrInvalidInput
 	}
 	var b Branch
-	err := s.pool.QueryRow(ctx,
-		`INSERT INTO branches (tenant_id, name, code) VALUES ($1, $2, $3)
-		 RETURNING id, tenant_id, name, code, status, created_at, updated_at`,
-		tenantID, name, code).
-		Scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Status, &b.CreatedAt, &b.UpdatedAt)
+	err := scanBranch(s.pool.QueryRow(ctx,
+		`INSERT INTO branches (tenant_id, name, code, address, phone) VALUES ($1, $2, $3, $4, $5)
+		 RETURNING `+branchCols,
+		tenantID, name, nullIfEmpty(code), nullIfEmpty(address), nullIfEmpty(phone)).Scan, &b)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -132,17 +136,18 @@ func (s *Store) CreateBranch(ctx context.Context, tenantID, name, code string) (
 	return b, nil
 }
 
-func (s *Store) UpdateBranch(ctx context.Context, tenantID, branchID, name, status string) (Branch, error) {
+func (s *Store) UpdateBranch(ctx context.Context, tenantID, branchID, name, address, phone, status string) (Branch, error) {
 	var b Branch
-	err := s.pool.QueryRow(ctx,
+	err := scanBranch(s.pool.QueryRow(ctx,
 		`UPDATE branches SET
-			name = COALESCE(NULLIF($3,''), name),
-			status = COALESCE(NULLIF($4,''), status),
+			name    = COALESCE(NULLIF($3,''), name),
+			address = COALESCE(NULLIF($4,''), address),
+			phone   = COALESCE(NULLIF($5,''), phone),
+			status  = COALESCE(NULLIF($6,''), status),
 			updated_at = NOW()
 		 WHERE id = $2 AND tenant_id = $1
-		 RETURNING id, tenant_id, name, code, status, created_at, updated_at`,
-		tenantID, branchID, name, status).
-		Scan(&b.ID, &b.TenantID, &b.Name, &b.Code, &b.Status, &b.CreatedAt, &b.UpdatedAt)
+		 RETURNING `+branchCols,
+		tenantID, branchID, name, address, phone, status).Scan, &b)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Branch{}, ErrNotFound
 	}
