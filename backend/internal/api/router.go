@@ -160,6 +160,7 @@ func (s *server) createTenant(w http.ResponseWriter, r *http.Request) {
 		Name         string `json:"name"`
 		TaxID        string `json:"tax_id"`
 		BusinessType string `json:"business_type"`
+		Address      string `json:"address"`
 	}
 
 	if err := readJSON(r, &req); err != nil {
@@ -167,7 +168,7 @@ func (s *server) createTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenant, err := s.store.CreateTenant(r.Context(), req.Name, req.TaxID, req.BusinessType)
+	tenant, err := s.store.CreateTenant(r.Context(), req.Name, req.TaxID, req.BusinessType, req.Address)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, db.ErrDuplicateTaxID) {

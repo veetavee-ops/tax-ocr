@@ -28,7 +28,7 @@ export default function Tenants() {
     e.preventDefault(); setError('')
     try {
       if (modal === 'create') {
-        await api.post('/tenants', { name: form.name, tax_id: form.tax_id, business_type: form.business_type })
+        await api.post('/tenants', { name: form.name, tax_id: form.tax_id, business_type: form.business_type, address: form.address })
       } else {
         await api.put(`/tenants/${selected.id}`, {
           name: form.name, address: form.address, status: form.status, business_type: form.business_type,
@@ -60,10 +60,22 @@ export default function Tenants() {
       {modal && (
         <Modal title={modal === 'create' ? 'เพิ่ม Tenant' : 'แก้ไข Tenant'} devLabel={modal === 'create' ? 'P-01-M Create' : 'P-01-M Edit'} onClose={() => setModal(null)}>
           <form onSubmit={submit} className="space-y-3">
-            <Input label="ชื่อบริษัท" name="name" value={form.name} onChange={onChange} required />
+            {modal === 'edit' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">ID</label>
+                  <p className="font-mono text-xs text-gray-400 bg-gray-50 rounded px-3 py-2 border border-gray-200 break-all">{selected?.id}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">เลขผู้เสียภาษี</label>
+                  <p className="font-mono text-sm text-gray-700 bg-gray-50 rounded px-3 py-2 border border-gray-200">{selected?.tax_id}</p>
+                </div>
+              </>
+            )}
             {modal === 'create' && (
               <Input label="เลขผู้เสียภาษี (13 หลัก)" name="tax_id" value={form.tax_id} onChange={onChange} required />
             )}
+            <Input label="ชื่อบริษัท" name="name" value={form.name} onChange={onChange} required />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ประเภทธุรกิจ</label>
               <select name="business_type" value={form.business_type} onChange={onChange}
@@ -73,24 +85,22 @@ export default function Tenants() {
                 <option value="construction">รับเหมาก่อสร้าง</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                ที่อยู่จดทะเบียน <span className="text-xs font-normal text-gray-400">(ใช้ใน header รายงานภาษีซื้อ, 50 ทวิ)</span>
+              </label>
+              <textarea name="address" value={form.address} onChange={onChange} rows={3} className={taCls}
+                placeholder="เลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" />
+            </div>
             {modal === 'edit' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ที่อยู่จดทะเบียน <span className="text-xs font-normal text-gray-400">(ใช้ใน header รายงานภาษีซื้อ, 50 ทวิ)</span>
-                  </label>
-                  <textarea name="address" value={form.address} onChange={onChange} rows={3} className={taCls}
-                    placeholder="เลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select name="status" value={form.status} onChange={onChange}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-                    <option value="active">active</option>
-                    <option value="inactive">inactive</option>
-                  </select>
-                </div>
-              </>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" value={form.status} onChange={onChange}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                  <option value="active">active</option>
+                  <option value="inactive">inactive</option>
+                </select>
+              </div>
             )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">

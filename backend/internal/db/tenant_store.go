@@ -57,7 +57,7 @@ func (s *Store) GetBranch(ctx context.Context, id string) (Branch, error) {
 	return b, err
 }
 
-func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType string) (Tenant, error) {
+func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType, address string) (Tenant, error) {
 	if name == "" || taxID == "" {
 		return Tenant{}, ErrInvalidInput
 	}
@@ -66,9 +66,9 @@ func (s *Store) CreateTenant(ctx context.Context, name, taxID, businessType stri
 	}
 	var t Tenant
 	err := scanTenant(s.pool.QueryRow(ctx,
-		`INSERT INTO tenants (name, tax_id, business_type) VALUES ($1, $2, $3)
+		`INSERT INTO tenants (name, tax_id, business_type, address) VALUES ($1, $2, $3, $4)
 		 RETURNING `+tenantCols,
-		name, taxID, businessType).Scan, &t)
+		name, taxID, businessType, address).Scan, &t)
 
 	if err != nil {
 		var pgErr *pgconn.PgError
