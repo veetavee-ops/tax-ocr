@@ -146,7 +146,23 @@ const DOC_TABS = [
   { key: '', label: 'ทั้งหมด' },
   { key: 'tax_invoice', label: 'ใบกำกับภาษี' },
   { key: 'receipt', label: 'ใบเสร็จรับเงิน' },
+  { key: 'invoice_billing', label: 'ใบแจ้งหนี้' },
+  { key: 'delivery_order', label: 'ใบส่งสินค้า' },
 ]
+
+const DOC_TYPE_LABELS = {
+  tax_invoice: 'ใบกำกับภาษี',
+  receipt: 'ใบเสร็จรับเงิน',
+  invoice_billing: 'ใบแจ้งหนี้',
+  delivery_order: 'ใบส่งสินค้า',
+}
+
+const INVALID_REASON_LABELS = {
+  buyer_tax_id_mismatch: 'เลขผู้เสียภาษีผู้ซื้อไม่ตรง',
+  buyer_branch_code_mismatch: 'รหัสสาขาผู้ซื้อไม่ตรง',
+  buyer_name_mismatch: 'ชื่อผู้ซื้อไม่ตรง',
+  late_invoice_vat_unclaimed: 'บิลเกิน 3 เดือน',
+}
 
 export default function Invoices() {
   const { user } = useAuth()
@@ -210,13 +226,19 @@ export default function Invoices() {
       )
     },
     {
-      key: 'doc_type', label: 'ประเภท', render: (r) => (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.doc_type === 'receipt'
-          ? 'bg-green-100 text-green-700'
-          : 'bg-blue-100 text-blue-700'}`}>
-          {r.doc_type === 'receipt' ? 'ใบเสร็จ' : 'ใบกำกับภาษี'}
-        </span>
-      )
+      key: 'doc_type', label: 'ประเภท', render: (r) => {
+        const colors = {
+          tax_invoice: 'bg-blue-100 text-blue-700',
+          receipt: 'bg-green-100 text-green-700',
+          invoice_billing: 'bg-purple-100 text-purple-700',
+          delivery_order: 'bg-gray-100 text-gray-600',
+        }
+        return (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[r.doc_type] ?? 'bg-gray-100 text-gray-600'}`}>
+            {DOC_TYPE_LABELS[r.doc_type] || r.doc_type || '—'}
+          </span>
+        )
+      }
     },
     { key: 'vendor_name', label: 'ชื่อร้าน', render: (r) => r.vendor_name || <span className="text-gray-300">—</span> },
     {
@@ -250,6 +272,14 @@ export default function Invoices() {
       key: 'status', label: 'Status', render: (r) => (
         <div>
           <StatusBadge value={r.status} />
+          {r.invalid_reason && r.status === 'invalid' && (
+            <div className="text-xs text-red-600 mt-0.5 font-medium">
+              {INVALID_REASON_LABELS[r.invalid_reason] || r.invalid_reason}
+            </div>
+          )}
+          {r.invalid_reason === 'late_invoice_vat_unclaimed' && r.status !== 'invalid' && (
+            <div className="text-xs text-amber-600 mt-0.5">⚠ บิลเกิน 3 เดือน</div>
+          )}
           {r.duplicate_of && (
             <div className="text-xs text-orange-500 mt-0.5">ซ้ำ</div>
           )}
@@ -308,7 +338,7 @@ export default function Invoices() {
 
         {/* Status filter */}
         <div className="flex gap-1">
-          {['', 'pending', 'verified', 'conflict'].map((s) => (
+          {['', 'pending', 'verified', 'conflict', 'invalid'].map((s) => (
             <button key={s} onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 rounded text-xs border font-medium transition-colors ${statusFilter === s
                 ? 'bg-blue-600 text-white border-blue-600'

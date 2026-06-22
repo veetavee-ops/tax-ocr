@@ -8,6 +8,7 @@ export function StatusBadge({ value }) {
     failed:     'bg-red-100 text-red-700',
     verified:   'bg-green-100 text-green-700',
     conflict:   'bg-red-100 text-red-700',
+    invalid:    'bg-red-900 text-white',
     resolved:   'bg-green-100 text-green-700',
     open:       'bg-blue-100 text-blue-700',
     closed:     'bg-gray-100 text-gray-500',

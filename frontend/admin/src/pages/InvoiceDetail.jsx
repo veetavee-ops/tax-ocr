@@ -279,8 +279,16 @@ function ImageViewer({ url, isPdf, onClose }) {
 const DOC_TYPE_LABELS = {
   tax_invoice: 'ใบกำกับภาษี',
   receipt: 'ใบเสร็จรับเงิน',
-  delivery_note: 'ใบส่งสินค้า',
+  invoice_billing: 'ใบแจ้งหนี้/ใบวางบิล',
+  delivery_order: 'ใบส่งสินค้า/ใบรับของ',
   unknown: 'ไม่ทราบประเภท',
+}
+
+const INVALID_REASON_LABELS = {
+  buyer_tax_id_mismatch:     'เลขผู้เสียภาษีผู้ซื้อไม่ตรงกับบริษัทของเรา — ภาษีซื้อต้องห้าม (ม.82/5)',
+  buyer_branch_code_mismatch:'รหัสสาขาผู้ซื้อไม่ตรงกับสาขาของเรา — ภาษีซื้อต้องห้าม (ม.82/5)',
+  buyer_name_mismatch:       'ชื่อผู้ซื้อไม่ตรงกับชื่อบริษัทของเรา — ภาษีซื้อต้องห้าม (ม.82/5)',
+  late_invoice_vat_unclaimed:'ใบกำกับภาษีออกเกิน 3 เดือน — ไม่สามารถนำมาใช้เป็นภาษีซื้อใน ภพ.30 ได้',
 }
 
 export default function InvoiceDetail() {
@@ -529,6 +537,29 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
+      {/* Invalid alert banner */}
+      {invoice.status === 'invalid' && invoice.invalid_reason && (
+        <div className="mb-3 flex items-start gap-2 bg-red-50 border border-red-300 rounded-lg px-4 py-3 text-sm text-red-800 flex-shrink-0">
+          <span className="text-lg leading-none mt-0.5">⛔</span>
+          <div>
+            <p className="font-semibold mb-0.5">เอกสารไม่ถูกต้องตามกฎหมาย — ไม่สามารถใช้เป็นภาษีซื้อได้</p>
+            <p className="text-red-700">{INVALID_REASON_LABELS[invoice.invalid_reason] || invoice.invalid_reason}</p>
+            <p className="text-xs text-red-500 mt-1">กรุณาแก้ไขข้อมูลให้ถูกต้องแล้ว Re-run OCR หรือแก้ไขเอกสาร</p>
+          </div>
+        </div>
+      )}
+
+      {/* Late invoice warning (status = verified but has reason) */}
+      {invoice.status !== 'invalid' && invoice.invalid_reason === 'late_invoice_vat_unclaimed' && (
+        <div className="mb-3 flex items-start gap-2 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-sm text-amber-800 flex-shrink-0">
+          <span className="text-lg leading-none mt-0.5">⚠️</span>
+          <div>
+            <p className="font-semibold mb-0.5">บิลข้ามเดือนเกิน 3 เดือน</p>
+            <p className="text-amber-700">ไม่สามารถนำภาษีซื้อในบิลนี้มายื่น ภพ.30 ได้ — บันทึกเป็นค่าใช้จ่ายได้ตามปกติ</p>
+          </div>
+        </div>
+      )}
+
       {/* 2-column layout */}
       <div style={{ display: 'flex', flex: 1, gap: '1.25rem', minHeight: 0 }}>
 
@@ -546,7 +577,8 @@ export default function InvoiceDetail() {
                   <select value={form.doc_type || 'tax_invoice'} onChange={(e) => handleField('doc_type', e.target.value)} className={inCls}>
                     <option value="tax_invoice">ใบกำกับภาษี</option>
                     <option value="receipt">ใบเสร็จรับเงิน</option>
-                    <option value="delivery_note">ใบส่งสินค้า</option>
+                    <option value="invoice_billing">ใบแจ้งหนี้/ใบวางบิล</option>
+                    <option value="delivery_order">ใบส่งสินค้า/ใบรับของ</option>
                     <option value="unknown">ไม่ทราบประเภท</option>
                   </select>
                 ) : (
