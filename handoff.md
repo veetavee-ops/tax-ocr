@@ -94,12 +94,14 @@ docker exec -it tax-ocr-postgres psql -U tax_ocr -d tax_ocr
 ## 3. Git Status
 ```
 Branch: master
-Latest: 6257f05 Session 12b: Add address to tenants/branches
+Remote: https://github.com/veetavee-ops/tax-ocr.git
+Latest: 4d5e3af Add *.pdf to .gitignore
+        cf78cd0 Session 12c: Expand doc types, invalid reason UI, overview move
+        d58f31a Update CLAUDE.md session 12 + add handoff.md
+        6257f05 Session 12b: Add address to tenants/branches
         f2cd10d Session 12: Buyer validation, invalid status, business_type
-        8d41c81 Session 11: Vendor registry, invoice date parts, accounting period
-        af6ae00 Session 10: Fix VAT-inclusive OCR end-to-end
 ```
-> ⚠️ ยังไม่มี remote configured — push ไม่ได้จนกว่าจะ `git remote add origin <url>`
+Clone สำรองไว้ที่ `d:\tax-ocr` (local clone)
 
 ---
 
