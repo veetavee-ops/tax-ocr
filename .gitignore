@@ -9,4 +9,5 @@ coverage/
 *.log
 backend/bin/
 backend/.cache/
+backend/*.exe
 .DS_Store
