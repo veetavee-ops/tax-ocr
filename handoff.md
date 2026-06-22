@@ -1,0 +1,294 @@
+# Tax OCR System — Handoff Document
+> อัปเดต: 2026-06-22 | Session 12
+
+---
+
+## 1. Credentials & Local Dev
+
+### Login (Admin UI)
+```
+Email:    veetavee@gmail.com
+Password: test1234
+```
+
+### Service Ports
+| Service | Port | URL |
+|---------|------|-----|
+| Admin UI | 3000 | http://localhost:3000 |
+| LIFF (User UI) | 5174 | http://localhost:5174 |
+| Backend API | 8080 | http://localhost:8080/api/v1 |
+| PostgreSQL | 5433 | localhost:5433 |
+| Redis | 6380 | localhost:6380 |
+| MinIO Console | 9001 | http://localhost:9001 |
+| MinIO API | 9000 | http://localhost:9000 |
+
+### MinIO Credentials
+```
+User:     minioadmin
+Password: minioadmin
+Bucket:   tax-ocr-active
+```
+
+### PostgreSQL
+```
+Host:     localhost:5433
+DB:       tax_ocr
+User:     tax_ocr
+Password: tax_ocr_dev
+```
+
+---
+
+## 2. วิธีรัน Local Dev
+
+### ขั้นตอน (เรียงตาม order)
+
+**Step 1 — เปิด Docker Desktop** (ต้องเห็น icon สีเขียวใน system tray)
+
+**Step 2 — Start infrastructure**
+```powershell
+Set-Location e:\tax-ocr\infrastructure
+docker compose up -d
+```
+
+**Step 3 — Start backend** (auto-migrate on startup)
+```powershell
+Set-Location e:\tax-ocr\backend
+go run ./cmd/
+# port 8080, auto-migrate ทุก migration ที่ยังไม่ได้ run
+```
+> ⚠️ ใช้ `./cmd/` ไม่ใช่ `./cmd/...` (มี 2 packages: main + migrate)
+
+**Step 4 — Start Admin UI**
+```powershell
+Set-Location e:\tax-ocr\frontend\admin
+npm run dev
+# port 3000
+```
+
+**Step 5 — Start LIFF (optional)**
+```powershell
+Set-Location e:\tax-ocr\frontend\liff
+npm run dev
+# port 5174
+```
+
+### Migration (manual)
+```powershell
+# ครั้งแรกบน DB เก่าที่ไม่มี schema_migrations table
+$env:MIGRATIONS_DIR = "e:\tax-ocr\database\migrations"
+Set-Location e:\tax-ocr\backend
+go run ./cmd/migrate/ -stamp
+
+# apply migrations ใหม่
+go run ./cmd/migrate/
+```
+
+### DB Shell
+```powershell
+docker exec -it tax-ocr-postgres psql -U tax_ocr -d tax_ocr
+```
+
+---
+
+## 3. Git Status
+```
+Branch: master
+Latest: 6257f05 Session 12b: Add address to tenants/branches
+        f2cd10d Session 12: Buyer validation, invalid status, business_type
+        8d41c81 Session 11: Vendor registry, invoice date parts, accounting period
+        af6ae00 Session 10: Fix VAT-inclusive OCR end-to-end
+```
+> ⚠️ ยังไม่มี remote configured — push ไม่ได้จนกว่าจะ `git remote add origin <url>`
+
+---
+
+## 4. Architecture Overview
+
+### Tech Stack
+| Layer | Tech |
+|-------|------|
+| User UI | LINE LIFF + React + Vite |
+| Admin UI | React + Vite + Tailwind |
+| Backend | Go (Golang) |
+| Queue | Asynq + Redis |
+| Database | PostgreSQL |
+| Object Storage | MinIO |
+| OCR Engine 1 | Google Cloud Vision (text reading) |
+| OCR Engine 2 | GPT-4o-mini (structure extraction) |
+
+### OCR Flow (final architecture — ห้ามเปลี่ยน)
+```
+ลูกค้าส่งไฟล์ → MinIO → Asynq Queue
+→ Worker:
+  1. Vision API → raw Thai text + classifyFromText() → doc_type, vat_inclusive
+  2. GPT-4o-mini → รับ text + VISION HINT → extract ทุก field (sole authority)
+  3. crossVerify → เปรียบ vendor_tax_id, totals
+  4. validateBuyer → ตรวจ buyer vs tenant/branch (tax_invoice เท่านั้น)
+  5. duplicate check → vendor_tax_id + invoice_doc_no
+  6. vendor upsert → link vendor_id
+  7. classify items → rule → AI → HITL
+→ LINE push แจ้งลูกค้า
+```
+
+### Buyer Validation Rules (ม.82/5)
+| Field | Rule | ผิด → |
+|-------|------|--------|
+| buyer_tax_id | exact match กับ tenant.tax_id | status = `invalid` |
+| buyer_branch_code | normalized exact match กับ branch.code | status = `invalid` |
+| buyer_name | Levenshtein similarity ≥ 85% | status = `invalid` |
+| invoice_date | ≤ 90 วันจากวันนี้ | invalid_reason = `late_invoice_vat_unclaimed` (status คงเดิม) |
+
+Branch code normalization: `"สำนักงานใหญ่"`, `"HQ"`, `"0"` → `"00000"`
+
+---
+
+## 5. Database Schema (current — session 12)
+
+### tenants
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| name | VARCHAR(255) | ชื่อบริษัท |
+| tax_id | VARCHAR(13) | เลขผู้เสียภาษี UNIQUE |
+| address | TEXT | ที่อยู่จดทะเบียน (สำหรับ header รายงานภาษี) |
+| business_type | VARCHAR(20) | trading / service / construction |
+| status | VARCHAR(20) | active / inactive |
+
+### branches
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| tenant_id | UUID | FK → tenants |
+| name, code | VARCHAR | UNIQUE(tenant_id, code) |
+| address | TEXT | ที่อยู่สาขา |
+| phone | VARCHAR(20) | เบอร์โทรสาขา |
+| status | VARCHAR(20) | active / inactive |
+
+### invoices (key fields)
+| Column | Type | Notes |
+|--------|------|-------|
+| status | VARCHAR(20) | **pending / verified / conflict / invalid** |
+| invalid_reason | TEXT | buyer_tax_id_mismatch / buyer_branch_code_mismatch / buyer_name_mismatch / late_invoice_vat_unclaimed |
+| doc_type | VARCHAR(50) | tax_invoice / receipt / invoice_billing / delivery_order |
+| vat_inclusive | BOOLEAN | ราคารวม VAT แล้ว? |
+| invoice_doc_no | TEXT | เลขที่ใบกำกับ |
+| invoice_date | TEXT | วันที่ในเอกสาร |
+| invoice_year/month/day | INT | parsed CE year |
+| accounting_year/month | INT | รอบบัญชี ภพ.30 |
+| duplicate_of | UUID | FK → invoices nullable |
+| vendor_id | UUID | FK → vendors nullable |
+
+### vendors
+| Column | Notes |
+|--------|-------|
+| tax_id | UNIQUE |
+| verified | bool — ยืนยันโดย admin แล้ว? |
+
+---
+
+## 6. Migrations Applied (33 total)
+```
+001–021  Core schema (tenants, branches, users, invoices, items, etc.)
+022      add vendor_name to invoices
+023      add invoice_no (serial)
+024      add vat_math_ok
+025      add invoice_doc fields (doc_no, date, buyer/vendor info)
+026      add invoice verified (verified_by, verified_at)
+027      expand invoice fields (vat_inclusive, vat_rate, etc.)
+028      expand invoice_item fields (product_code, unit, discount)
+029      add invoice_date_parts + duplicate_of
+030      add accounting_period (accounting_year, accounting_month)
+031      create vendors table
+032      add invalid_reason + business_type  ← session 12
+033      add address (tenants/branches) + phone (branches)  ← session 12
+```
+
+---
+
+## 7. Key Files
+
+### Backend
+```
+backend/
+├── cmd/main.go                    # entry point, wire everything
+├── cmd/migrate/main.go            # migration CLI
+├── internal/api/
+│   ├── router.go                  # all routes + tenant/branch handlers
+│   ├── invoice_handler.go         # invoice CRUD
+│   ├── document_handler.go        # upload / link
+│   ├── vendor_handler.go          # vendor CRUD + verify
+│   └── auth_handler.go            # login / register / refresh
+├── internal/db/
+│   ├── store.go                   # structs + errors
+│   ├── tenant_store.go            # tenant + branch queries
+│   ├── invoice_store.go           # invoice + item queries
+│   └── vendor_store.go            # vendor queries
+├── internal/queue/
+│   ├── worker.go                  # main processing: OCR → validate → classify
+│   └── task.go                    # ProcessInvoicePayload
+├── internal/ocr/
+│   ├── service.go                 # orchestrates dual-engine
+│   ├── gpt.go                     # GPT-4o-mini extraction
+│   ├── vision.go                  # Google Cloud Vision + classifyFromText
+│   └── crossverify.go             # cross-verify logic
+└── internal/classify/
+    └── service.go                 # rule → AI → HITL classification
+```
+
+### Frontend Admin
+```
+frontend/admin/src/pages/
+├── Invoices.jsx         # list + filter + upload modal
+├── InvoiceDetail.jsx    # detail + edit + verification wizard
+├── Tenants.jsx          # CRUD tenant + business_type + address
+├── Branches.jsx         # CRUD branch + address + phone
+├── Vendors.jsx          # vendor list + verify
+└── ...
+```
+
+---
+
+## 8. Invoice Status Flow
+```
+pending   → OCR กำลังทำงาน (auto-refresh 3s)
+verified  → OCR ผ่าน + buyer valid (อาจมี invalid_reason=late_invoice เป็น warning)
+conflict  → OCR cross-verify ไม่ตรง → ต้องแก้มือ
+invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษีซื้อต้องห้าม ม.82/5
+```
+
+---
+
+## 9. สิ่งที่ยังต้องทำ (Next Tasks)
+
+### ทำได้ทันที
+- [ ] ทดสอบ buyer validation — อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น `invalid` ใน UI
+- [ ] กรอก tenant.address + branch.address ผ่านหน้า Tenants/Branches ใน Admin UI
+- [ ] ทดสอบ OCR กับ doc_type=tax_invoice, vat_inclusive=false
+
+### Phase ถัดไป
+- [ ] GPT prompt: สอนให้ classify `invoice_billing` / `delivery_order` ได้
+- [ ] รายงานภาษีซื้อ (ม.87/1) — export PDF/Excel พร้อม header ที่อยู่
+- [ ] PDF OCR support
+- [ ] Password reset flow
+- [ ] OneDrive API integration
+
+### Production (ยังไม่ถึงเวลา — อย่าทำ)
+- Dockerfile x3 (backend, admin, liff)
+- nginx + SSL
+- LINE OA production config
+- Target: Hetzner CX22 (~€4/เดือน)
+
+---
+
+## 10. Rules & Gotchas
+
+**DB:** อย่า `CASE WHEN $n != 0 THEN $n` กับ float columns — PostgreSQL infer เป็น bigint → ตัดทศนิยม ใช้ `SET col = $n` ตรงๆ เสมอ
+
+**OCR:** Vision = อ่านข้อความ + classify เท่านั้น, GPT = extract values เท่านั้น อย่าให้ Vision extract ตัวเลข
+
+**Backend run:** `go run ./cmd/` ไม่ใช่ `./cmd/...`
+
+**Migration:** ต้องตั้ง `$env:MIGRATIONS_DIR` ก่อน run migrate CLI เพราะ relative path จาก `backend/` ไปไม่ถึง
+
+**address fields:** ไม่ใช้ใน OCR buyer validation — เก็บไว้สำหรับ header รายงานภาษีซื้อเท่านั้น
