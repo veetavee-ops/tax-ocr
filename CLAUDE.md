@@ -556,6 +556,7 @@ POST   /ocr/extract-company   # JPG/PNG/PDF หนังสือรับรอ
 032      add invalid_reason + business_type  ← session 12
 033      add address (tenants/branches) + phone (branches)  ← session 12
 034      tenant soft-delete + suspend (deleted_at, suspended_at, suspension_reason)  ← session 14
+035      tenants_status_check: เพิ่ม 'suspended' ใน CHECK constraint  ← session 20
 ```
 
 ---
@@ -677,10 +678,10 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 ## 12. Session Status
 > อัปเดตทุกครั้งที่ใช้ `/mem`
 
-### อัพเดท: 2026-06-23 (session 19)
+### อัพเดท: 2026-06-23 (session 20)
 
 ### ✅ Done (สิ่งที่สร้างแล้ว)
-- Infrastructure: Docker Compose (PostgreSQL/Redis/MinIO), **34 migrations** ครบ
+- Infrastructure: Docker Compose (PostgreSQL/Redis/MinIO), **35 migrations** ครบ
 - Backend: 70+ endpoints, OCR dual-engine, Asynq queue, HITL, reviewer, audit, archive, LINE webhook
 - Migration runner: `db/migrate.go` + `cmd/migrate/` + auto-migrate on startup
 - Admin UI: InvoiceDetail (full rewrite), VerificationWizard, Invoices, Tenants, Branches, Vendors, Settings
@@ -694,6 +695,18 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - **Session 17**: Merge handoff.md → CLAUDE.md (single source of truth), update /mem skill
 - **Session 18**: gdrive-update.py script, /mem auto-sync .env
 - **Session 19**: /setup skill, skills backup to Drive _claude-skills/, Drive .env ครบทุก credential
+- **Session 20**: Fix ConfirmDialog (suspend/trash) + migration 035 เพิ่ม 'suspended' ใน tenants_status_check
+
+### ✅ Session 20 — Fix Tenant Suspend (2026-06-23)
+
+**ปัญหาที่แก้:**
+1. `tenants_status_check` constraint ไม่รู้จัก `'suspended'` → migration 035 เพิ่ม value ใน CHECK constraint
+2. `ConfirmDialog` — กด confirm ไม่ได้เพราะ React re-render ระหว่าง focus transfer กิน click event
+3. UX ใหม่: confirm button เริ่ม `opacity-30` (จาง), คลิกครั้งแรก = set focus (เต็มสี), คลิกครั้งที่ 2 = execute
+4. `onMouseDown` capture focus state ก่อน click → ป้องกัน re-render eating click
+5. Error handling: async handleClick + แสดง error ใน dialog ถ้า API fail
+
+**Key pattern (ConfirmDialog):** `wasFocusedRef.current` capture ใน `onMouseDown` → check ใน `onClick`
 
 ### ✅ Session 19 — /setup skill + Skills Backup to Drive (2026-06-23)
 
@@ -730,6 +743,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - ทดสอบ buyer validation: อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น status=invalid ใน UI
 - GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification prompt
 - **Setup gdrive-sa.json** — สร้าง Service Account → download JSON → share `_claude-skills/` + `tax-ocr/` folders → ทดสอบ overwrite script
+- ทดสอบ suspend/unsuspend tenant ครบ flow: suspend → login blocked 403 → unsuspend → login ได้ใหม่
 
 ### 🔵 Phase ถัดไป
 - OneDrive API, PDF OCR (invoice), Password reset, รายงานภาษีซื้อ (ม.87/1), e-Tax XML

@@ -7,38 +7,38 @@ import { PageHeader, Btn, Input, StatusBadge, useForm } from '../components/ui'
 const INIT = { name: '', tax_id: '', address: '', business_type: 'service', status: 'active' }
 const BIZ_LABELS = { trading: 'ซื้อมาขายไป', service: 'บริการ', construction: 'รับเหมาก่อสร้าง' }
 
-function useDblClickProtect(isFocused) {
-  const ref = useRef(false)
-  const onMouseDown = () => { ref.current = !isFocused }
-  const guard = (fn) => () => { if (ref.current) { ref.current = false; return } fn() }
-  return { onMouseDown, guard }
-}
-
 function ConfirmDialog({ title, message, warning, confirmLabel, confirmClass, onConfirm, onCancel }) {
   const [focused, setFocused] = useState('cancel')
-  const cancelProtect  = useDblClickProtect(focused === 'cancel')
-  const confirmProtect = useDblClickProtect(focused === 'confirm')
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  // capture focus state BEFORE click (mousedown fires before focus transfer)
+  const wasFocusedRef = useRef(false)
+
+  const handleMouseDown = () => { wasFocusedRef.current = focused === 'confirm' }
+
+  const handleClick = async () => {
+    if (!wasFocusedRef.current) return   // first click: focus-only, no action
+    if (loading) return
+    setLoading(true); setErr('')
+    try { await onConfirm() }
+    catch (e) { setErr(e.message || 'เกิดข้อผิดพลาด'); setLoading(false) }
+  }
 
   return (
     <Modal title={title} onClose={onCancel} hideClose>
       <p className="text-sm text-gray-700 mb-1">{message}</p>
       {warning && <p className="text-xs text-red-500 mb-4">{warning}</p>}
+      {err && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 mb-2">{err}</p>}
       <div className="flex justify-end gap-3 mt-4">
-        <button autoFocus
-          onFocus={() => setFocused('cancel')}
-          onMouseDown={cancelProtect.onMouseDown}
-          onClick={cancelProtect.guard(onCancel)}
-          className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all focus:outline-none ${
+        <button autoFocus onFocus={() => setFocused('cancel')} onClick={onCancel} disabled={loading}
+          className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all focus:outline-none disabled:opacity-50 ${
             focused === 'cancel' ? 'bg-blue-500 text-white scale-105' : 'bg-gray-200 text-gray-400'}`}>
           ยกเลิก
         </button>
-        <button
-          onFocus={() => setFocused('confirm')}
-          onMouseDown={confirmProtect.onMouseDown}
-          onClick={confirmProtect.guard(onConfirm)}
-          className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all focus:outline-none ${
-            focused === 'confirm' ? `${confirmClass} scale-105` : 'bg-red-100 text-red-400'}`}>
-          {confirmLabel}
+        <button onFocus={() => setFocused('confirm')} onMouseDown={handleMouseDown} onClick={handleClick} disabled={loading}
+          className={`px-6 py-2 rounded-lg font-semibold text-sm transition-all focus:outline-none disabled:opacity-60 ${
+            focused === 'confirm' ? `${confirmClass} scale-105` : `${confirmClass} opacity-30`}`}>
+          {loading ? 'กำลังดำเนินการ…' : confirmLabel}
         </button>
       </div>
     </Modal>
