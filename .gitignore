@@ -12,3 +12,4 @@ backend/.cache/
 backend/*.exe
 .DS_Store
 *.pdf
+.claude/

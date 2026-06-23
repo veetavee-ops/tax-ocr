@@ -1,11 +1,14 @@
 package ocr
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/ledongthuc/pdf"
 )
 
 // CompanyData holds extracted company/tenant registration info.
@@ -60,9 +63,32 @@ RULES:
 4. Missing text → empty string ""
 5. Return raw JSON only`
 
-// ExtractCompanyInfo extracts company registration data from an image/document.
-// Uses Vision for text reading, then GPT for structured extraction.
-func (s *Service) ExtractCompanyInfo(ctx context.Context, imageBytes []byte, contentType string) (CompanyData, error) {
+// extractTextFromPDF extracts plain text from a digital (selectable-text) PDF.
+func extractTextFromPDF(data []byte) (string, error) {
+	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", fmt.Errorf("pdf open: %w", err)
+	}
+	var sb strings.Builder
+	for i := 1; i <= r.NumPage(); i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		text, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		sb.WriteString(text)
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// ExtractCompanyInfo extracts company registration data from an image or digital PDF.
+// PDF path: extract text via Go PDF library → GPT (no Vision needed).
+// Image path: Vision → GPT.
+func (s *Service) ExtractCompanyInfo(ctx context.Context, fileBytes []byte, contentType string) (CompanyData, error) {
 	s.mu.RLock()
 	gpt := s.gpt
 	vision := s.vision
@@ -72,16 +98,29 @@ func (s *Service) ExtractCompanyInfo(ctx context.Context, imageBytes []byte, con
 		return CompanyData{}, fmt.Errorf("GPT not configured")
 	}
 
+	// Digital PDF: extract text locally, no Vision call needed
+	if contentType == "application/pdf" {
+		text, err := extractTextFromPDF(fileBytes)
+		if err != nil {
+			return CompanyData{}, fmt.Errorf("pdf: %w", err)
+		}
+		if text == "" {
+			return CompanyData{}, fmt.Errorf("PDF ไม่มีข้อความ (อาจเป็น scanned PDF — กรุณาใช้ไฟล์รูปแทน)")
+		}
+		return gpt.extractCompanyInfo(ctx, text, nil, "")
+	}
+
+	// Image: Vision → GPT
 	var rawText string
 	if vision != nil {
-		text, err := vision.extractText(ctx, imageBytes)
+		text, err := vision.extractText(ctx, fileBytes)
 		if err != nil {
 			return CompanyData{}, fmt.Errorf("vision: %w", err)
 		}
 		rawText = text
 	}
 
-	return gpt.extractCompanyInfo(ctx, rawText, imageBytes, contentType)
+	return gpt.extractCompanyInfo(ctx, rawText, fileBytes, contentType)
 }
 
 func (g *gptClient) extractCompanyInfo(ctx context.Context, rawText string, imageBytes []byte, contentType string) (CompanyData, error) {

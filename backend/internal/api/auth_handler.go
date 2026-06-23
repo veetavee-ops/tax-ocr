@@ -176,6 +176,11 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if tenant, err := s.store.GetTenant(r.Context(), user.TenantID); err == nil && tenant.Status == "suspended" {
+		writeError(w, http.StatusForbidden, errors.New("บัญชีของบริษัทนี้ถูกระงับการใช้งานชั่วคราว"))
+		return
+	}
+
 	token, err := issueToken(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -314,6 +319,11 @@ func (s *server) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if tenant, err := s.store.GetTenant(r.Context(), user.TenantID); err == nil && tenant.Status == "suspended" {
+		writeError(w, http.StatusForbidden, errors.New("บัญชีของบริษัทนี้ถูกระงับการใช้งานชั่วคราว"))
+		return
+	}
+
 	newToken, err := issueToken(user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -321,6 +331,20 @@ func (s *server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"token": newToken})
+}
+
+func (s *server) checkTenantStatus(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := claimsFromContext(r.Context())
+		if claims != nil && claims.TenantID != "" {
+			t, err := s.store.GetTenant(r.Context(), claims.TenantID)
+			if err == nil && t.Status == "suspended" {
+				writeError(w, http.StatusForbidden, errors.New("บัญชีของบริษัทนี้ถูกระงับการใช้งานชั่วคราว"))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func authMiddleware(next http.Handler) http.Handler {

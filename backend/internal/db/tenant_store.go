@@ -9,19 +9,35 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const tenantCols = `id, name, tax_id, COALESCE(address,''), status, COALESCE(business_type,'service'), created_at, updated_at`
+const tenantCols = `id, name, tax_id, COALESCE(address,''), status, COALESCE(business_type,'service'), suspended_at, COALESCE(suspension_reason,''), deleted_at, created_at, updated_at`
 
 func scanTenant(scan func(dest ...any) error, t *Tenant) error {
-	return scan(&t.ID, &t.Name, &t.TaxID, &t.Address, &t.Status, &t.BusinessType, &t.CreatedAt, &t.UpdatedAt)
+	return scan(&t.ID, &t.Name, &t.TaxID, &t.Address, &t.Status, &t.BusinessType, &t.SuspendedAt, &t.SuspensionReason, &t.DeletedAt, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+tenantCols+` FROM tenants ORDER BY created_at DESC`)
+	rows, err := s.pool.Query(ctx, `SELECT `+tenantCols+` FROM tenants WHERE deleted_at IS NULL ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	var items []Tenant
+	for rows.Next() {
+		var t Tenant
+		if err := scanTenant(rows.Scan, &t); err != nil {
+			return nil, err
+		}
+		items = append(items, t)
+	}
+	return items, nil
+}
 
+func (s *Store) ListTrashedTenants(ctx context.Context) ([]Tenant, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+tenantCols+` FROM tenants WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var items []Tenant
 	for rows.Next() {
 		var t Tenant
@@ -96,6 +112,65 @@ func (s *Store) UpdateTenant(ctx context.Context, id, name, address, status, bus
 		return Tenant{}, ErrNotFound
 	}
 	return t, err
+}
+
+func (s *Store) DeleteTenant(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE tenants SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) RestoreTenant(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE tenants SET deleted_at = NULL, updated_at = NOW() WHERE id = $1 AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) PermanentDeleteTenant(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM tenants WHERE id = $1 AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) SuspendTenant(ctx context.Context, id, reason string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE tenants SET status = 'suspended', suspended_at = NOW(), suspension_reason = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+		id, reason)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) UnsuspendTenant(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE tenants SET status = 'active', suspended_at = NULL, suspension_reason = NULL, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+		id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) ListBranchesByTenant(ctx context.Context, tenantID string) ([]Branch, error) {

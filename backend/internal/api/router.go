@@ -35,8 +35,14 @@ func NewRouter(store *db.Store, storage *storage.Client, queueClient *queue.Clie
 	p := http.NewServeMux()
 	p.HandleFunc("GET /api/v1/tenants", api.listTenants)
 	p.HandleFunc("POST /api/v1/tenants", api.createTenant)
+	p.HandleFunc("GET /api/v1/tenants/trash", api.listTrashedTenants)
 	p.HandleFunc("GET /api/v1/tenants/{id}", api.getTenant)
 	p.HandleFunc("PUT /api/v1/tenants/{id}", api.updateTenant)
+	p.HandleFunc("DELETE /api/v1/tenants/{id}", api.deleteTenant)
+	p.HandleFunc("POST /api/v1/tenants/{id}/restore", api.restoreTenant)
+	p.HandleFunc("DELETE /api/v1/tenants/{id}/permanent", api.permanentDeleteTenant)
+	p.HandleFunc("POST /api/v1/tenants/{id}/suspend", api.suspendTenant)
+	p.HandleFunc("POST /api/v1/tenants/{id}/unsuspend", api.unsuspendTenant)
 
 	p.HandleFunc("GET /api/v1/tenants/{id}/branches", api.listBranches)
 	p.HandleFunc("POST /api/v1/tenants/{id}/branches", api.createBranch)
@@ -121,7 +127,7 @@ func NewRouter(store *db.Store, storage *storage.Client, queueClient *queue.Clie
 	p.HandleFunc("GET /api/v1/auth/me", api.me)
 	p.HandleFunc("POST /api/v1/auth/logout", api.logout)
 
-	mux.Handle("/api/v1/", authMiddleware(auditMiddleware(store)(p)))
+	mux.Handle("/api/v1/", authMiddleware(api.checkTenantStatus(auditMiddleware(store)(p))))
 	return mux
 }
 
@@ -212,6 +218,62 @@ func (s *server) updateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"data": tenant})
+}
+
+func (s *server) deleteTenant(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteTenant(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "moved to trash"})
+}
+
+func (s *server) listTrashedTenants(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListTrashedTenants(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": items})
+}
+
+func (s *server) restoreTenant(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.RestoreTenant(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "restored"})
+}
+
+func (s *server) permanentDeleteTenant(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.PermanentDeleteTenant(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "permanently deleted"})
+}
+
+func (s *server) suspendTenant(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.SuspendTenant(r.Context(), r.PathValue("id"), req.Reason); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "suspended"})
+}
+
+func (s *server) unsuspendTenant(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.UnsuspendTenant(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "unsuspended"})
 }
 
 func (s *server) listBranches(w http.ResponseWriter, r *http.Request) {

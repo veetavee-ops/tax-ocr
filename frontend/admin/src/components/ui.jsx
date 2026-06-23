@@ -15,6 +15,7 @@ export function StatusBadge({ value }) {
     asset:      'bg-purple-100 text-purple-700',
     expense:    'bg-orange-100 text-orange-700',
     paid:       'bg-green-100 text-green-700',
+    suspended:  'bg-orange-100 text-orange-700',
   }
   const cls = colors[value] ?? 'bg-gray-100 text-gray-600'
   return (
@@ -33,16 +34,17 @@ export function PageHeader({ title, action }) {
   )
 }
 
-export function Btn({ children, onClick, variant = 'primary', type = 'button', disabled }) {
-  const base = 'px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50'
+export function Btn({ children, onClick, variant = 'primary', type = 'button', disabled, autoFocus }) {
+  const base = 'px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:font-bold'
   const variants = {
-    primary:   'bg-blue-600 text-white hover:bg-blue-700',
-    secondary: 'bg-gray-200 text-gray-700 hover:bg-gray-300',
-    danger:    'bg-red-600 text-white hover:bg-red-700',
-    success:   'bg-green-600 text-white hover:bg-green-700',
+    primary:        'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
+    secondary:      'bg-gray-200 text-gray-700 hover:bg-gray-300 focus:ring-gray-400',
+    danger:         'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+    'outline-danger': 'border border-red-400 text-red-600 bg-white hover:bg-red-600 hover:text-white focus:ring-red-500',
+    success:        'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
   }
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]}`}>
+    <button type={type} onClick={onClick} disabled={disabled} autoFocus={autoFocus} className={`${base} ${variants[variant]}`}>
       {children}
     </button>
   )
