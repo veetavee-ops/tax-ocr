@@ -255,6 +255,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - [ ] ทดสอบ buyer validation — อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น `invalid` ใน UI
 - [ ] ทดสอบ OCR company extract — JPG/PNG/PDF หนังสือรับรอง → auto-fill P-01-M Create
 - [ ] GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification
+- [ ] **Google Drive overwrite script** — Service Account + Python script (`~/.claude/scripts/gdrive-update.py`) เพื่อให้ `/mem` เขียนทับไฟล์ใน Drive ได้แทนการ create ใหม่ทุกครั้ง → ใช้ได้ทุกโปรเจกต์
 
 ### Phase ถัดไป
 - [ ] **e-Tax Invoice XML support** — ผู้ขายส่ง XML มาตรฐาน RD แทนรูป → parse XML → บันทึก invoice (ข้าม OCR), ต้องมีไฟล์ตัวอย่างจาก vendor ก่อน
