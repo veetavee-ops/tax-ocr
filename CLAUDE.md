@@ -26,8 +26,10 @@
 ### Drive File IDs (สำหรับ overwrite script)
 | ไฟล์ | Drive File ID |
 |------|---------------|
-| CLAUDE.md | `1jUtejXWHM8mh_eOrj_5IP2AmPc77UC2U` |
+| CLAUDE.md | `1Rx_qbUqgJ3SKqYW55hNOSxMue_V7I0Wt` |
+| .env | `1e2288av9H0RRX2yjgMyhxXCIIfAWGDha` |
 | tax-ocr folder | `1RWCAqNHgeUK0zMhVmaVz_37m_zqCQBVx` |
+| _claude-skills folder | `1eVw_XNCf4eMn1r5FB_fQoNSeMzjMo60M` |
 
 > อัปเดต file ID ทุกครั้งที่ create ไฟล์ใหม่ (จนกว่า overwrite script จะใช้งานได้)
 
@@ -40,7 +42,7 @@
 1. Google Cloud Console → IAM & Admin → Service Accounts → Create
 2. Download JSON key → บันทึกที่ `~/.claude/scripts/gdrive-sa.json`
 3. Share Drive folder `tax-ocr` กับ service account email (Editor permission)
-4. ทดสอบ: `python ~/.claude/scripts/gdrive-update.py --file-id 1jUtejXWHM8mh_eOrj_5IP2AmPc77UC2U --local-path e:\tax-ocr\CLAUDE.md`
+4. ทดสอบ: `python ~/.claude/scripts/gdrive-update.py --file-id 1Rx_qbUqgJ3SKqYW55hNOSxMue_V7I0Wt --local-path e:\tax-ocr\CLAUDE.md`
 
 ### Service Ports
 | Service | Port |
@@ -603,10 +605,16 @@ frontend/admin/src/pages/
 ### Custom Skills
 ```
 ~/.claude/commands/
-├── mem.md       # /mem — บันทึก session (upload CLAUDE.md ขึ้น Drive)
+├── mem.md       # /mem — บันทึก session + sync Drive .env อัตโนมัติ
 ├── creds.md     # /creds — อ่าน credentials จาก Drive
+├── setup.md     # /setup — new computer/project: เขียน .env + ดาวน์โหลด skills
 ├── popup.md     # /popup — ConfirmDialog + table action buttons
 └── helpskill.md # /helpskill — list custom skills
+
+~/.claude/scripts/
+└── gdrive-update.py  # overwrite Drive file by ID (Service Account)
+
+Drive: _claude-skills/ (1eVw_XNCf4eMn1r5FB_fQoNSeMzjMo60M) — backup ทุก skill
 ```
 
 ---
@@ -660,7 +668,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - Skill: `/popup` (`~/.claude/commands/popup.md`)
 - ปุ่ม "ปิดบริการ" แสดงเฉพาะ `status === 'active'`
 
-**OCR API Keys:** เก็บใน DB (`ocr_config` table) ไม่ใช่ `.env` — ถ้า DB volume ถูก wipe ต้องกรอกใหม่ใน Settings → OCR Config
+**OCR API Keys:** เก็บใน DB (`ocr_config` table) — แต่ `/mem` sync ค่าล่าสุดขึ้น Drive `.env` ทุก session อัตโนมัติ → ถ้า DB wipe ดูค่าได้จาก Drive `.env` section `[OCR API KEYS]`
 
 **Naming:** DB: snake_case | Go: PascalCase struct, camelCase func | API: kebab-case plural | React: PascalCase component
 
@@ -669,7 +677,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 ## 12. Session Status
 > อัปเดตทุกครั้งที่ใช้ `/mem`
 
-### อัพเดท: 2026-06-23 (session 18)
+### อัพเดท: 2026-06-23 (session 19)
 
 ### ✅ Done (สิ่งที่สร้างแล้ว)
 - Infrastructure: Docker Compose (PostgreSQL/Redis/MinIO), **34 migrations** ครบ
@@ -684,14 +692,26 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - **Session 15**: PDF OCR company, Confirm Popup pattern, Tenant suspend enforcement
 - **Session 16**: Credentials system (Google Drive), custom skills (/creds /mem /popup /helpskill)
 - **Session 17**: Merge handoff.md → CLAUDE.md (single source of truth), update /mem skill
+- **Session 18**: gdrive-update.py script, /mem auto-sync .env
+- **Session 19**: /setup skill, skills backup to Drive _claude-skills/, Drive .env ครบทุก credential
+
+### ✅ Session 19 — /setup skill + Skills Backup to Drive (2026-06-23)
+
+**Skills backup system:**
+- สร้าง `/setup` skill — new computer/project: อ่าน Drive → เขียน .env + ดาวน์โหลด skills อัตโนมัติ
+- Upload skills ทั้งหมดขึ้น Drive `_claude-skills/` (folder ID: `1eVw_XNCf4eMn1r5FB_fQoNSeMzjMo60M`)
+- `/mem` step 3b: auto-sync `.env` ทุก session — query DB `ocr_config` + อ่าน local .env → upload ทับ Drive
+- Drive `.env` ครบทุกค่า: DOCKER + BACKEND + OPENAI_API_KEY + GCV_API_KEY + ADMIN UI
+- `/creds` ใช้ Drive `.env` เป็น single source สำหรับทุก credential
+
+**Flow เครื่องใหม่:** `git clone` → `/setup` → พร้อมรัน (ไม่ต้องกรอก credential ใดๆ)
 
 ### ✅ Session 18 — Google Drive Overwrite Script (2026-06-23)
 
 **GDrive overwrite script:**
 - สร้าง `~/.claude/scripts/gdrive-update.py` — overwrite Drive file by ID ด้วย Service Account
 - Install `google-api-python-client`, `google-auth` ลง Python env แล้ว
-- อัปเดต `/mem` skill: step 3 ใช้ script นี้ + step 3b ถาม credentials ใหม่
-- บันทึก file ID ของ CLAUDE.md (`1IUobn45DKibRzqBT93q_8U0woklxNUfl`) ใน section 2
+- อัปเดต `/mem` skill: step 3b sync .env อัตโนมัติ
 - ขั้นตอนถัดไป: สร้าง `gdrive-sa.json` (Service Account key) + share folder
 
 ### ✅ Session 17 — Unified Memory File (2026-06-23)
@@ -709,7 +729,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 ### 🟡 ถัดไป (ทำได้เลย)
 - ทดสอบ buyer validation: อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น status=invalid ใน UI
 - GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification prompt
-- **Setup gdrive-sa.json** — สร้าง Service Account → download JSON → share Drive folder → ทดสอบ overwrite script
+- **Setup gdrive-sa.json** — สร้าง Service Account → download JSON → share `_claude-skills/` + `tax-ocr/` folders → ทดสอบ overwrite script
 
 ### 🔵 Phase ถัดไป
 - OneDrive API, PDF OCR (invoice), Password reset, รายงานภาษีซื้อ (ม.87/1), e-Tax XML
