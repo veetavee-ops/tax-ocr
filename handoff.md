@@ -1,15 +1,16 @@
 # Tax OCR System — Handoff Document
-> อัปเดต: 2026-06-23 | Session 15
+> อัปเดต: 2026-06-23 | Session 16
 
 ---
 
 ## 1. Credentials & Local Dev
 
-### Login (Admin UI)
-```
-Email:    veetavee@gmail.com
-Password: test1234
-```
+### Credentials (ไม่ขึ้น git — เก็บใน Google Drive)
+> https://drive.google.com/drive/folders/17BDc1uAofvv5irAeaf4pgVRxMV7AqP2l
+
+ดาวน์โหลดไฟล์จาก Drive แล้ววางที่:
+- `infrastructure/.env` — credentials สำหรับ Docker services
+- `backend/.env` — credentials สำหรับ backend app (API keys, JWT secret ฯลฯ)
 
 ### Service Ports
 | Service | Port | URL |
@@ -21,21 +22,6 @@ Password: test1234
 | Redis | 6380 | localhost:6380 |
 | MinIO Console | 9001 | http://localhost:9001 |
 | MinIO API | 9000 | http://localhost:9000 |
-
-### MinIO Credentials
-```
-User:     minioadmin
-Password: minioadmin
-Bucket:   tax-ocr-active
-```
-
-### PostgreSQL
-```
-Host:     localhost:5433
-DB:       tax_ocr
-User:     tax_ocr
-Password: tax_ocr_dev
-```
 
 ---
 
@@ -95,11 +81,11 @@ docker exec -it tax-ocr-postgres psql -U tax_ocr -d tax_ocr
 ```
 Branch: master
 Remote: https://github.com/veetavee-ops/tax-ocr.git
-Latest: 796e8eb Fix: OCR company accept images only (JPG/PNG)
-        25f629a P-01-M Create: OCR auto-fill from company registration doc
-        d22d6d6 P-01-M: unified create/edit form
-        a1df8ce P-01-M: show all fields incl. read-only ID/tax_id
-        2be4cd8 Add dev labels to all modals and popups (P-XX-M format)
+Latest: 55f748f docs: update CLAUDE.md + handoff.md session 14-15
+        cb093cc Session 14-15: tenant trash/suspend, modal UX, PDF OCR, suspend enforcement
+        3ba3d7b handoff: add e-Tax XML support to next tasks
+        8d5d303 Update CLAUDE.md session 13 + handoff.md
+        796e8eb Fix: OCR company accept images only (JPG/PNG), not PDF
 ```
 Clone สำรองไว้ที่ `d:\tax-ocr` (local clone)
 
@@ -276,7 +262,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
   - Export ภพ.30 XML → Phase ถัดไป
 - [ ] รายงานภาษีซื้อ (ม.87/1) — export PDF/Excel พร้อม header ที่อยู่
 - [ ] PDF OCR support (invoice — scanned PDF)
-- [ ] PDF company extract — digital PDF จาก DBD → Go PDF library extract text → GPT (ไม่ต้อง Vision)
+- [x] PDF company extract — digital PDF จาก DBD → Go PDF library extract text → GPT ✅ session 15
 - [ ] Password reset flow
 - [ ] OneDrive API integration
 
@@ -306,3 +292,11 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 - Skill: `/popup` (ไฟล์: `~/.claude/commands/popup.md`) — เดิมชื่อ `/ui-modal`
 - Components: `useDblClickProtect` hook + `ConfirmDialog` component (วางต้นไฟล์ page เดียวกัน)
 - ปุ่มใน table: wrapper `-my-3 gap-0`, ปุ่ม `py-3 px-3` = full-row click area
+
+**OCR API Keys:** เก็บใน DB (`ocr_config` table) ไม่ใช่ `.env` — ถ้า DB volume ถูก wipe ต้องกรอกใหม่ใน Admin UI → Settings → OCR Config
+
+**Credentials:** ห้ามถามผู้ใช้ — อ่านจาก Google Drive เสมอ (`/creds` skill)
+- Drive root: `https://drive.google.com/drive/folders/17BDc1uAofvv5irAeaf4pgVRxMV7AqP2l`
+- Project folder: `tax-ocr/` → ไฟล์ `.env` และ `handoff.md`
+
+**Custom Skills:** `~/.claude/commands/` — `/creds`, `/mem`, `/popup`, `/helpskill`
