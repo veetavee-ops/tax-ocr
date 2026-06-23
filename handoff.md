@@ -1,5 +1,5 @@
 # Tax OCR System — Handoff Document
-> อัปเดต: 2026-06-22 | Session 12
+> อัปเดต: 2026-06-23 | Session 15
 
 ---
 
@@ -189,7 +189,7 @@ Branch code normalization: `"สำนักงานใหญ่"`, `"HQ"`, `"0
 
 ---
 
-## 6. Migrations Applied (33 total)
+## 6. Migrations Applied (34 total)
 ```
 001–021  Core schema (tenants, branches, users, invoices, items, etc.)
 022      add vendor_name to invoices
@@ -204,6 +204,7 @@ Branch code normalization: `"สำนักงานใหญ่"`, `"HQ"`, `"0
 031      create vendors table
 032      add invalid_reason + business_type  ← session 12
 033      add address (tenants/branches) + phone (branches)  ← session 12
+034      tenant soft-delete + suspend (deleted_at, suspended_at, suspension_reason)  ← session 14
 ```
 
 ---
@@ -233,7 +234,8 @@ backend/
 │   ├── service.go                 # orchestrates dual-engine
 │   ├── gpt.go                     # GPT-4o-mini extraction
 │   ├── vision.go                  # Google Cloud Vision + classifyFromText
-│   └── crossverify.go             # cross-verify logic
+│   ├── crossverify.go             # cross-verify logic
+│   └── company.go                 # OCR company extract (JPG/PNG/PDF → CompanyData)
 └── internal/classify/
     └── service.go                 # rule → AI → HITL classification
 ```
@@ -265,8 +267,7 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 
 ### ทำได้ทันที
 - [ ] ทดสอบ buyer validation — อัปโหลดใบที่ buyer_tax_id ผิด → ควรเห็น `invalid` ใน UI
-- [ ] ทดสอบ OCR company extract — ถ่ายรูป/scan หนังสือรับรอง → auto-fill P-01-M Create
-- [ ] PDF OCR company — รับ digital PDF → Go PDF library extract text → GPT (ง่ายกว่า image สำหรับ PDF จาก DBD)
+- [ ] ทดสอบ OCR company extract — JPG/PNG/PDF หนังสือรับรอง → auto-fill P-01-M Create
 - [ ] GPT prompt invoice: เพิ่ม `invoice_billing`/`delivery_order` ใน classification
 
 ### Phase ถัดไป
@@ -298,3 +299,10 @@ invalid   → buyer info ไม่ตรงกับ tenant/branch → ภาษ
 **Migration:** ต้องตั้ง `$env:MIGRATIONS_DIR` ก่อน run migrate CLI เพราะ relative path จาก `backend/` ไปไม่ถึง
 
 **address fields:** ไม่ใช้ใน OCR buyer validation — เก็บไว้สำหรับ header รายงานภาษีซื้อเท่านั้น
+
+**Tenant suspend:** `checkTenantStatus` middleware ตรวจ DB ทุก request — suspended tenant โดน 403 ทันที login/refresh ก็โดนด้วย ปุ่ม "ปิดบริการ" แสดงเฉพาะ `status === 'active'`
+
+**Popup pattern:** ทุก confirm action ใช้ `ConfirmDialog` + `confirmXxx` state + `-my-3 gap-0 py-3` สำหรับ full-row click area
+- Skill: `/popup` (ไฟล์: `~/.claude/commands/popup.md`) — เดิมชื่อ `/ui-modal`
+- Components: `useDblClickProtect` hook + `ConfirmDialog` component (วางต้นไฟล์ page เดียวกัน)
+- ปุ่มใน table: wrapper `-my-3 gap-0`, ปุ่ม `py-3 px-3` = full-row click area
